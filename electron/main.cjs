@@ -203,10 +203,8 @@ app.whenReady().then(() => {
   registerShortcuts();
 
   ipcMain.handle('desktop-assistant:capture-screen', captureDesktop);
-  ipcMain.on('desktop-assistant:hide', () => {
-    stopNativeSpeech();
-    assistantWindow?.hide();
-  });
+  ipcMain.on('desktop-assistant:show', showAssistant);
+  ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
   ipcMain.handle('desktop-assistant:start-voice', () => startNativeSpeech());
   ipcMain.on('desktop-assistant:stop-voice', stopNativeSpeech);
 
