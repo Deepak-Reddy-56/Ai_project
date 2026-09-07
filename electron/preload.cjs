@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('desktopAssistant', {
   onVoiceEvent: (callback) => {
     const handler = (_event, payload) => callback?.(payload);
     ipcRenderer.on('desktop-assistant:speech-event', handler);
+    ipcRenderer.send('desktop-assistant:voice-subscribe');
     return () => ipcRenderer.removeListener('desktop-assistant:speech-event', handler);
   }
 });
