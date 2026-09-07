@@ -23,7 +23,8 @@ let speechProcess = null;
 
 const isDev = !app.isPackaged;
 const rendererUrl = process.env.ASSISTANT_RENDERER_URL || 'http://localhost:5173';
-const speechScript = path.join(__dirname, 'windowsSpeech.ps1');
+const pythonExecutable = process.env.ASSISTANT_PYTHON || 'python';
+const speechScript = path.join(__dirname, 'speech', 'stt.py');
 
 function createWindows() {
   mainWindow = new BrowserWindow({
@@ -132,25 +133,21 @@ function stopNativeSpeech() {
 
 function startNativeSpeech() {
   if (process.platform !== 'win32') {
-    sendSpeechEvent({ type: 'error', message: 'Native desktop speech input is currently supported on Windows only.' });
+    sendSpeechEvent({ type: 'error', message: 'Python desktop speech input is currently supported on Windows only.' });
     return false;
   }
 
   if (!fs.existsSync(speechScript)) {
-    sendSpeechEvent({ type: 'error', message: 'Windows speech helper is missing from the Electron build.' });
+    sendSpeechEvent({ type: 'error', message: 'Python Whisper speech helper is missing from the Electron build.' });
     return false;
   }
 
   stopNativeSpeech();
 
-  speechProcess = spawn('powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-ExecutionPolicy', 'Bypass',
-    '-File', speechScript
-  ], {
+  speechProcess = spawn(pythonExecutable, ['-u', speechScript], {
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
 
   let stdoutBuffer = '';
@@ -158,26 +155,28 @@ function startNativeSpeech() {
     stdoutBuffer += chunk.toString();
     const lines = stdoutBuffer.split(/\r?\n/);
     stdoutBuffer = lines.pop() || '';
-
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
         sendSpeechEvent(JSON.parse(trimmed));
       } catch {
-        console.warn('[DesktopAssistant] Ignoring invalid speech helper output:', trimmed);
+        console.warn('[DesktopAssistant] Ignoring invalid Python STT output:', trimmed);
       }
     }
   });
 
   speechProcess.stderr.on('data', (chunk) => {
     const text = chunk.toString().trim();
-    if (text) console.warn('[DesktopAssistant] Windows speech:', text);
+    if (text) console.warn('[DesktopAssistant] Python STT:', text);
   });
 
   speechProcess.on('error', (err) => {
     speechProcess = null;
-    sendSpeechEvent({ type: 'error', message: `Windows speech could not start: ${err.message}` });
+    sendSpeechEvent({
+      type: 'error',
+      message: `Python Whisper could not start: ${err.message}. Install the desktop speech dependencies first.`
+    });
   });
 
   speechProcess.on('exit', (code) => {
@@ -204,7 +203,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('desktop-assistant:capture-screen', captureDesktop);
   ipcMain.on('desktop-assistant:show', showAssistant);
-  ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
+  ipcMain.on('desktop-assistant:hide', () => {
+    stopNativeSpeech();
+    assistantWindow?.hide();
+  });
   ipcMain.handle('desktop-assistant:start-voice', () => startNativeSpeech());
   ipcMain.on('desktop-assistant:stop-voice', stopNativeSpeech);
 
