@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import time
 
 import numpy as np
 import sounddevice as sd
@@ -35,34 +34,17 @@ def main():
     emit({'type': 'ready', 'engine': 'faster-whisper', 'model': MODEL_NAME})
 
     blocksize = int(SAMPLE_RATE * CHUNK_SECONDS)
-    audio_buffer = np.zeros((0,), dtype=np.float32)
 
-    def audio_callback(indata, frames, callback_time, status):
-        if status:
-            emit({'type': 'audio-status', 'message': str(status)})
-        chunk = np.asarray(indata[:, 0], dtype=np.float32).copy()
-        return chunk
-
-    # RawInputStream lets us consume the default Windows input device without
-    # involving browser permissions or Chromium's speech service.
-    with sd.InputStream(
-        samplerate=SAMPLE_RATE,
-        channels=CHANNELS,
-        dtype='float32',
-        blocksize=blocksize,
-        callback=audio_callback,
-    ):
-        emit({'type': 'listening'})
-
-        # sounddevice callbacks cannot directly return arbitrary audio to Python
-        # application code, so use a short blocking RawInputStream below instead.
-
+    # Blocking input capture keeps the worker simple and avoids browser or
+    # Chromium microphone permissions altogether.
     with sd.RawInputStream(
         samplerate=SAMPLE_RATE,
         channels=CHANNELS,
         dtype='int16',
         blocksize=blocksize,
     ) as stream:
+        emit({'type': 'listening'})
+
         while True:
             raw, overflowed = stream.read(blocksize)
             if overflowed:
@@ -75,16 +57,8 @@ def main():
             if rms < MIN_RMS:
                 continue
 
-            audio_buffer = np.concatenate((audio_buffer, samples))
-            if audio_buffer.shape[0] < blocksize:
-                continue
-
-            # Keep a little context across adjacent chunks so words near the
-            # boundary are less likely to be lost.
-            window = audio_buffer[-int(SAMPLE_RATE * (CHUNK_SECONDS + 0.75)) :]
-
             segments, _ = model.transcribe(
-                window,
+                samples,
                 language=LANGUAGE,
                 beam_size=5,
                 best_of=5,
@@ -97,11 +71,6 @@ def main():
             text = ' '.join(segment.text.strip() for segment in segments).strip()
             if text:
                 emit({'type': 'recognized', 'text': text})
-
-            # Retain a short overlap but prevent the buffer from growing forever.
-            audio_buffer = audio_buffer[-int(SAMPLE_RATE * 0.5) :]
-
-            time.sleep(0.01)
 
 
 if __name__ == '__main__':
