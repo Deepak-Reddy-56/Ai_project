@@ -110,9 +110,6 @@ class VoiceService {
         console.warn('[VoiceService] SpeechRecognition error:', errorType);
         this.lastError = errorType;
 
-        // These are not useful reasons to keep hammering the browser recognition
-        // service. In particular, repeated `network` restarts can cause a visible
-        // UI freeze and a never-ending error loop.
         if (['network', 'not-allowed', 'service-not-allowed', 'permission-denied'].includes(errorType)) {
           this.shouldRestartHandsFree = false;
         }
@@ -134,7 +131,6 @@ class VoiceService {
 
       recognition.onend = () => {
         if (this.sessionId !== currentSession) return;
-
         this.isListening = false;
 
         if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {

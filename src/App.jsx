@@ -7,6 +7,7 @@ import CodeExplainer from './pages/CodeExplainer';
 import Topics from './pages/Topics';
 import About from './pages/About';
 import VoiceAssistant from './components/assistant/VoiceAssistant';
+import './components/assistant/pointer-fix.css';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -90,7 +91,6 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedTopicId, setSelectedTopicId] = useState('python-1');
 
-  // Support back/forward browser buttons or simple hash triggers if user wants to use links
   useEffect(() => {
     const handleHashChange = () => {
       try {
@@ -107,13 +107,11 @@ export default function App() {
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    // Trigger on initial mount
     handleHashChange();
 
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Update hash when page state changes so reload/back works correctly
   const handlePageChange = (pageId) => {
     try {
       setCurrentPage(pageId);
