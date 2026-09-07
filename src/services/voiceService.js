@@ -66,7 +66,10 @@ class VoiceService {
         }
       }
 
-      if (matchedPhrase && callbacks.onWakePhrase) {
+      // In hands-free desktop mode the recognizer is always listening, but it
+      // must ignore ordinary speech until a wake phrase is heard.
+      if (callbacks.onWakePhrase) {
+        if (!matchedPhrase) return;
         const phraseIndex = normalized.indexOf(matchedPhrase);
         const rawAfterWake = sourceText.slice(phraseIndex + matchedPhrase.length).trim();
         this.stopNativeListening();
@@ -76,10 +79,8 @@ class VoiceService {
       }
 
       callbacks.onInterim?.('');
-      if (callbacks.onTranscript) callbacks.onTranscript(sourceText);
-
-      // One-shot desktop recognition stops after the first usable phrase.
-      if (!this.isHandsFreeActive) this.stopNativeListening();
+      callbacks.onTranscript?.(sourceText);
+      this.stopNativeListening();
       return;
     }
 
@@ -168,7 +169,6 @@ class VoiceService {
         if (this.sessionId !== currentSession) return;
 
         let interimTranscript = '';
-
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) finalTranscript += transcript + ' ';
