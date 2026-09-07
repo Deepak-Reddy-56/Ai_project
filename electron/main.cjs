@@ -1,5 +1,5 @@
 const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen, session } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -12,19 +12,38 @@ fs.mkdirSync(codeCachePath, { recursive: true });
 fs.mkdirSync(sessionDataPath, { recursive: true });
 app.setPath('userData', appDataRoot);
 app.setPath('sessionData', sessionDataPath);
-app.commandLine.appendSwitch('disk-cache-dir', cachePath);
 
-let mainWindow;
-let assistantWindow;
+// The desktop assistant does not need Chromium's disk caches. Disable them so
+// Windows cache-lock warnings cannot interfere with the native runtime.
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+
+let mainWindow = null;
+let assistantWindow = null;
 let registeredAccelerator = null;
 let speechProcess = null;
 let speechReady = false;
 let speechStarting = false;
+let speechReadyWaiters = [];
+let latestSpeechState = null;
 
 const isDev = !app.isPackaged;
 const rendererUrl = process.env.ASSISTANT_RENDERER_URL || 'http://localhost:5173';
-const pythonExecutable = process.env.ASSISTANT_PYTHON || 'python';
 const speechScript = path.join(__dirname, 'speech', 'stt.py');
+
+function resolvePython() {
+  if (process.env.ASSISTANT_PYTHON) return { command: process.env.ASSISTANT_PYTHON, args: [] };
+
+  try {
+    const result = spawnSync('where.exe', ['python'], { encoding: 'utf8', windowsHide: true });
+    const first = result.stdout?.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    if (first) return { command: first, args: [] };
+  } catch {
+    // Try the Python launcher below.
+  }
+
+  return { command: 'py.exe', args: ['-3'] };
+}
 
 function createWindows() {
   mainWindow = new BrowserWindow({
@@ -35,7 +54,8 @@ function createWindows() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      v8CacheOptions: 'none'
     }
   });
 
@@ -54,7 +74,9 @@ function createWindows() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false,
+      v8CacheOptions: 'none'
     }
   });
 
@@ -62,6 +84,10 @@ function createWindows() {
   else assistantWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'assistant' });
 
   assistantWindow.setAlwaysOnTop(true, 'floating');
+  assistantWindow.webContents.once('did-finish-load', () => {
+    startNativeSpeech();
+    pushLatestSpeechState();
+  });
   positionAssistant();
 }
 
@@ -114,58 +140,92 @@ function registerShortcuts() {
 }
 
 function sendSpeechEvent(payload) {
-  console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
+  latestSpeechState = payload;
+
+  if (['status', 'device', 'ready', 'listening', 'recognized', 'error', 'end'].includes(payload?.type)) {
+    console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
+  }
+
   if (!assistantWindow || assistantWindow.isDestroyed()) return;
   assistantWindow.webContents.send('desktop-assistant:speech-event', payload);
 }
 
-function sendPythonCommand(command) {
-  if (!speechProcess || speechProcess.killed || !speechProcess.stdin?.writable) {
-    console.warn(`[DesktopAssistant] Cannot send Python command: ${command}; worker is not running.`);
-    return false;
+function pushLatestSpeechState() {
+  if (!latestSpeechState || !assistantWindow || assistantWindow.isDestroyed()) return;
+  assistantWindow.webContents.send('desktop-assistant:speech-event', latestSpeechState);
+}
+
+function resolveSpeechReady(success, error) {
+  const waiters = speechReadyWaiters;
+  speechReadyWaiters = [];
+  for (const waiter of waiters) {
+    if (success) waiter.resolve(true);
+    else waiter.reject(error instanceof Error ? error : new Error(String(error || 'Whisper worker failed')));
   }
-  try {
-    speechProcess.stdin.write(`${JSON.stringify({ command })}\n`);
-    console.log(`[DesktopAssistant] Python command sent: ${command}`);
-    return true;
-  } catch (err) {
-    console.warn('[DesktopAssistant] Failed to control Python STT:', err.message);
-    return false;
-  }
+}
+
+function waitForSpeechReady(timeoutMs = 60000) {
+  if (speechReady) return Promise.resolve(true);
+  startNativeSpeech();
+
+  return new Promise((resolve, reject) => {
+    const waiter = {
+      resolve: (value) => { clearTimeout(waiter.timer); resolve(value); },
+      reject: (error) => { clearTimeout(waiter.timer); reject(error); },
+      timer: null
+    };
+    waiter.timer = setTimeout(() => {
+      speechReadyWaiters = speechReadyWaiters.filter((item) => item !== waiter);
+      reject(new Error('Local Whisper did not become ready within 60 seconds.'));
+    }, timeoutMs);
+    speechReadyWaiters.push(waiter);
+  });
 }
 
 function stopNativeSpeech() {
   if (!speechProcess) return;
-  sendPythonCommand('stop');
+  try { speechProcess.kill(); } catch { /* ignore */ }
+  speechProcess = null;
+  speechReady = false;
+  speechStarting = false;
 }
 
 function startNativeSpeech() {
   if (process.platform !== 'win32') {
-    sendSpeechEvent({ type: 'error', message: 'Python desktop speech input is currently supported on Windows only.' });
+    const error = new Error('The local Whisper desktop voice engine currently supports Windows.');
+    resolveSpeechReady(false, error);
+    sendSpeechEvent({ type: 'error', message: error.message });
     return false;
   }
 
   if (!fs.existsSync(speechScript)) {
-    sendSpeechEvent({ type: 'error', message: 'Python Whisper speech helper is missing from the Electron build.' });
+    const error = new Error('Python Whisper speech helper is missing from the Electron build.');
+    resolveSpeechReady(false, error);
+    sendSpeechEvent({ type: 'error', message: error.message });
     return false;
   }
 
-  if (speechProcess && speechReady) return sendPythonCommand('start');
+  if (speechProcess && !speechProcess.killed) return true;
   if (speechStarting) return true;
 
-  if (speechProcess) {
-    try { speechProcess.kill(); } catch { /* ignore */ }
-    speechProcess = null;
-    speechReady = false;
-  }
-
+  const python = resolvePython();
   speechStarting = true;
-  console.log(`[DesktopAssistant] Starting Python STT: ${pythonExecutable} -u ${speechScript}`);
+  latestSpeechState = { type: 'status', state: 'starting-python' };
+  sendSpeechEvent(latestSpeechState);
+  console.log(`[DesktopAssistant] Starting Whisper worker: ${python.command} ${python.args.join(' ')} -u ${speechScript}`);
 
-  speechProcess = spawn(pythonExecutable, ['-u', speechScript], {
+  speechProcess = spawn(python.command, [...python.args, '-u', speechScript], {
+    cwd: path.join(__dirname, 'speech'),
     windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8',
+      ASSISTANT_WHISPER_MODEL: process.env.ASSISTANT_WHISPER_MODEL || 'base.en',
+      ASSISTANT_WHISPER_DEVICE: process.env.ASSISTANT_WHISPER_DEVICE || 'cpu',
+      ASSISTANT_WHISPER_COMPUTE_TYPE: process.env.ASSISTANT_WHISPER_COMPUTE_TYPE || 'int8'
+    }
   });
 
   let stdoutBuffer = '';
@@ -177,43 +237,45 @@ function startNativeSpeech() {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
+
       try {
         const payload = JSON.parse(trimmed);
         if (payload.type === 'ready') {
           speechReady = true;
           speechStarting = false;
-          sendSpeechEvent(payload);
-          sendPythonCommand('start');
-        } else {
-          sendSpeechEvent(payload);
+          resolveSpeechReady(true);
         }
+        sendSpeechEvent(payload);
       } catch {
-        console.warn('[DesktopAssistant] Ignoring invalid Python STT output:', trimmed);
+        console.warn('[DesktopAssistant] Ignoring invalid Whisper output:', trimmed);
       }
     }
   });
 
   speechProcess.stderr.on('data', (chunk) => {
     const text = chunk.toString('utf8').trim();
-    if (text) console.warn('[DesktopAssistant] Python STT stderr:', text);
+    if (text) console.warn('[DesktopAssistant] Whisper stderr:', text);
   });
 
   speechProcess.on('spawn', () => {
-    console.log(`[DesktopAssistant] Python STT process spawned (pid ${speechProcess.pid}).`);
+    console.log(`[DesktopAssistant] Whisper worker spawned (pid ${speechProcess.pid}).`);
   });
 
   speechProcess.on('error', (err) => {
     speechStarting = false;
-    speechProcess = null;
     speechReady = false;
-    sendSpeechEvent({ type: 'error', message: `Python Whisper could not start: ${err.message}` });
+    speechProcess = null;
+    const error = new Error(`Python Whisper could not start: ${err.message}`);
+    resolveSpeechReady(false, error);
+    sendSpeechEvent({ type: 'error', message: error.message });
   });
 
   speechProcess.on('exit', (code, signal) => {
-    console.log(`[DesktopAssistant] Python STT exited: code=${code} signal=${signal || 'none'}`);
-    speechProcess = null;
-    speechReady = false;
+    console.log(`[DesktopAssistant] Whisper worker exited: code=${code} signal=${signal || 'none'}`);
     speechStarting = false;
+    speechReady = false;
+    speechProcess = null;
+    if (code !== 0) resolveSpeechReady(false, new Error(`Whisper worker exited with code ${code}.`));
     sendSpeechEvent({ type: 'end', code, signal });
   });
 
@@ -223,29 +285,26 @@ function startNativeSpeech() {
 app.whenReady().then(() => {
   session.defaultSession.setCodeCachePath(codeCachePath);
   session.defaultSession.setPermissionCheckHandler(
-    (webContents, permission) => permission === 'media' || permission === 'display-capture'
+    (_webContents, permission, _requestingOrigin, details) => {
+      if (permission === 'media') return !details?.mediaType || details.mediaType === 'audio';
+      return permission === 'display-capture';
+    }
   );
   session.defaultSession.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
+    (_webContents, permission, callback) => {
       callback(permission === 'media' || permission === 'display-capture');
     }
   );
 
-  createWindows();
-  registerShortcuts();
-
   ipcMain.handle('desktop-assistant:capture-screen', captureDesktop);
   ipcMain.on('desktop-assistant:show', showAssistant);
-  ipcMain.on('desktop-assistant:hide', () => {
-    stopNativeSpeech();
-    assistantWindow?.hide();
-  });
-  ipcMain.handle('desktop-assistant:start-voice', () => startNativeSpeech());
-  ipcMain.on('desktop-assistant:stop-voice', stopNativeSpeech);
+  ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
+  ipcMain.handle('desktop-assistant:start-voice', waitForSpeechReady);
+  ipcMain.on('desktop-assistant:stop-voice', () => {});
+  ipcMain.on('desktop-assistant:voice-subscribe', pushLatestSpeechState);
 
-  // Keep one persistent Python worker alive so opening/listening does not race
-  // against Python startup or Whisper model loading.
-  startNativeSpeech();
+  createWindows();
+  registerShortcuts();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindows();
@@ -253,9 +312,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
-  if (speechProcess) {
-    try { speechProcess.kill(); } catch { /* ignore */ }
-  }
+  stopNativeSpeech();
   if (registeredAccelerator) globalShortcut.unregister(registeredAccelerator);
   globalShortcut.unregisterAll();
 });
