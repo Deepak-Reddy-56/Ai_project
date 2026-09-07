@@ -212,6 +212,73 @@ export const codeExplainerResponses = {
 };
 
 // Logic helper to generate a smart mock response if the snippet is custom
+export function getCustomAnalyzeResponse(code = '', language = 'python') {
+  const cleanCode = code.trim();
+  const lang = (language || 'python').toLowerCase();
+
+  let hasIssue = false;
+  let isUncertain = false;
+  let issueText = '';
+  let whyText = '';
+  let fixText = '';
+
+  if (cleanCode.includes("calculate_total") || cleanCode.includes("undefined_var")) {
+    isUncertain = true;
+    issueText = "Missing Context: 'calculate_total' and 'items' are not defined in this snippet.";
+  } else if ((cleanCode.includes("def ") || cleanCode.includes("if ") || cleanCode.includes("for ") || cleanCode.includes("while ")) && !cleanCode.includes(":") && lang === 'python') {
+    hasIssue = true;
+    issueText = "Missing trailing colon (:) at the end of a block header.";
+    whyText = "In Python, block declarations like 'if', 'for', 'while', and 'def' must end with a colon to define the start of an indented block.";
+    fixText = cleanCode.split('\n').map(line => (line.trim().startsWith('def ') || line.trim().startsWith('if ') || line.trim().startsWith('for ') || line.trim().startsWith('while ')) && !line.includes(':') ? line + ':' : line).join('\n');
+  } else if (cleanCode.includes("i + 1") && (cleanCode.includes("range(len(") || cleanCode.includes("[i + 1]"))) {
+    hasIssue = true;
+    issueText = "IndexError: list index out of range on the last loop iteration.";
+    whyText = "The loop range runs up to len(items)-1. Accessing index i + 1 on the last turn pushes the index out of bounds.";
+    fixText = cleanCode.replace("i + 1", "i");
+  } else if ((lang === 'cpp' || lang === 'c++') && (cleanCode.includes("string") && cleanCode.includes("+") || cleanCode.endsWith("]"))) {
+    hasIssue = true;
+    issueText = cleanCode.endsWith("]")
+      ? "Syntax & Type Error: Incorrect closing bracket ']' for main() function, and cannot perform '+' addition directly between int and std::string."
+      : "Type Mismatch: cannot perform arithmetic addition between integer and std::string directly.";
+    whyText = "C++ is strongly typed and does not automatically convert string objects to integers for mathematical operations. Function blocks must end with '}'.";
+    fixText = `#include <iostream>\n#include <string>\nusing namespace std;\n\nint main() {\n    int x = 10;\n    string y = "5";\n    cout << x << y;\n    return 0;\n}`;
+  }
+
+  if (isUncertain) {
+    return {
+      status: "uncertain",
+      summary: `Code calls 'calculate_total(items)' which relies on external scope.`,
+      issue: issueText,
+      why: "The function definition for calculate_total and initialization of items were not provided in this snippet.",
+      fix: `# Define items and function first:\ndef calculate_total(item_list):\n    return sum(item_list)\n\nitems = [10, 20, 30]\n${cleanCode}`,
+      explanation: `Syntactically this snippet is valid, but running it directly will trigger a NameError unless calculate_total and items are defined elsewhere.`,
+      followUp: "Provide the definition of calculate_total if you'd like me to analyze its internal logic!"
+    };
+  }
+
+  if (hasIssue) {
+    return {
+      status: "issue",
+      summary: `Code written in ${language.toUpperCase()} contains a potential issue based on structural inspection.`,
+      issue: issueText,
+      why: whyText,
+      fix: fixText,
+      explanation: `This snippet processes operations in ${language.toUpperCase()}. Review the suggested fix above to resolve the potential issue.`,
+      followUp: "Would you like me to explain the underlying code structure in detail?"
+    };
+  }
+
+  return {
+    status: "correct",
+    summary: `This ${language.toUpperCase()} code appears syntactically sound and logical.`,
+    issue: "",
+    why: "",
+    fix: "",
+    explanation: `Here is how this ${language.toUpperCase()} code works:\n\n1. **Initialization:** Defines variables and structure.\n2. **Execution:** Performs operations sequentially.\n3. **Output:** Displays or processes the expected values.`,
+    followUp: "Try adding extra conditions or inputs to explore further!"
+  };
+}
+
 export function getCustomExplainerResponse(code, action) {
   const cleanCode = code.trim();
   

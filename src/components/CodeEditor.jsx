@@ -1,10 +1,25 @@
 import React, { useRef } from 'react';
-import { Copy, Trash, Play } from 'lucide-react';
+import { Copy, Trash2 } from 'lucide-react';
 
-export default function CodeEditor({ code, onChange, placeholder }) {
+function getFilename(lang = 'python') {
+  switch ((lang || 'python').toLowerCase()) {
+    case 'java':                return 'Main.java';
+    case 'cpp': case 'c++':    return 'main.cpp';
+    case 'javascript': case 'js': return 'app.js';
+    case 'typescript': case 'ts': return 'app.ts';
+    case 'c':                   return 'main.c';
+    case 'csharp': case 'c#':  return 'Program.cs';
+    case 'go':                  return 'main.go';
+    case 'rust':                return 'main.rs';
+    case 'ruby':                return 'script.rb';
+    case 'php':                 return 'index.php';
+    case 'python': default:     return 'script.py';
+  }
+}
+
+export default function CodeEditor({ code, onChange, placeholder, language = 'python' }) {
   const lineNumbersRef = useRef(null);
-  
-  const lineCount = Math.max(code.split('\n').length, 1);
+  const lineCount   = Math.max(code.split('\n').length, 1);
   const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1);
 
   const handleScroll = (e) => {
@@ -15,167 +30,185 @@ export default function CodeEditor({ code, onChange, placeholder }) {
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
-    alert("Code copied to clipboard!");
+    // Brief visual feedback is handled via the OS clipboard — no alert needed
   };
 
-  const handleClear = () => {
-    onChange('');
-  };
+  const handleClear = () => onChange('');
+
+  const filename = getFilename(language);
 
   return (
-    <div className="editor-container">
-      {/* Editor Header Bar */}
+    <div className="editor-wrap">
+      {/* Toolbar */}
       <div className="editor-toolbar">
         <div className="editor-tab">
-          <Play size={12} className="tab-icon" />
-          <span>script.py</span>
+          <span className="editor-tab-dot" />
+          <span className="editor-tab-name">{filename}</span>
         </div>
         <div className="editor-actions">
-          <button onClick={handleCopy} className="toolbar-btn" title="Copy code">
-            <Copy size={14} />
+          <button onClick={handleCopy}  className="editor-action-btn" title="Copy code" aria-label="Copy code">
+            <Copy size={13} />
             <span>Copy</span>
           </button>
-          <button onClick={handleClear} className="toolbar-btn text-rose" title="Clear code">
-            <Trash size={14} />
+          <button onClick={handleClear} className="editor-action-btn editor-action-clear" title="Clear code" aria-label="Clear code">
+            <Trash2 size={13} />
             <span>Clear</span>
           </button>
         </div>
       </div>
 
-      {/* Editor Body */}
+      {/* Body */}
       <div className="editor-body">
-        {/* Line Numbers */}
-        <div ref={lineNumbersRef} className="line-numbers-col">
-          {lineNumbers.map((num) => (
-            <div key={num} className="line-number-item">
-              {num}
-            </div>
+        {/* Line numbers */}
+        <div ref={lineNumbersRef} className="editor-gutter" aria-hidden="true">
+          {lineNumbers.map((n) => (
+            <div key={n} className="editor-line-num">{n}</div>
           ))}
         </div>
 
-        {/* Text Area Input */}
+        {/* Textarea */}
         <textarea
           value={code}
           onChange={(e) => onChange(e.target.value)}
           onScroll={handleScroll}
-          placeholder={placeholder || "# Paste or write your code here..."}
-          className="editor-textarea-control"
+          placeholder={placeholder || '# Paste or write your code here...'}
+          className="editor-textarea"
           spellCheck="false"
+          aria-label="Code input"
+          aria-multiline="true"
         />
       </div>
 
       <style>{`
-        .editor-container {
+        .editor-wrap {
           display: flex;
           flex-direction: column;
-          border-radius: 12px;
+          border-radius: var(--radius-lg);
           overflow: hidden;
-          border: 1px solid var(--border-color);
-          background: #0d1117; /* GitHub Dark background */
-          box-shadow: var(--glass-shadow);
+          border: 1px solid var(--border);
+          background: var(--bg-input);
+          box-shadow: var(--shadow-sm);
         }
 
+        /* Toolbar */
         .editor-toolbar {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 8px 16px;
+          padding: 0 14px;
+          height: 38px;
           background: #161b22;
-          border-bottom: 1px solid var(--border-color);
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
         }
 
         .editor-tab {
           display: flex;
           align-items: center;
-          gap: 6px;
-          font-family: var(--font-sans);
-          font-size: 0.8rem;
-          color: var(--text-main);
-          font-weight: 500;
+          gap: 7px;
         }
 
-        .tab-icon {
-          color: var(--accent-teal);
+        .editor-tab-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--accent);
+          opacity: 0.7;
+        }
+
+        .editor-tab-name {
+          font-family: var(--font-mono);
+          font-size: 0.78rem;
+          color: var(--text-secondary);
+          font-weight: 500;
         }
 
         .editor-actions {
           display: flex;
-          gap: 12px;
+          gap: 4px;
         }
 
-        .toolbar-btn {
-          display: flex;
+        .editor-action-btn {
+          display: inline-flex;
           align-items: center;
           gap: 4px;
           background: transparent;
           border: none;
-          color: var(--text-muted);
+          color: var(--text-tertiary);
           font-family: var(--font-sans);
           font-size: 0.75rem;
           cursor: pointer;
-          transition: var(--transition-fast);
-          padding: 2px 6px;
+          padding: 4px 8px;
           border-radius: 4px;
+          transition: var(--transition-fast);
         }
 
-        .toolbar-btn:hover {
-          color: var(--text-main);
-          background: rgba(255, 255, 255, 0.05);
+        .editor-action-btn:hover {
+          color: var(--text-primary);
+          background: rgba(255, 255, 255, 0.06);
         }
 
-        .toolbar-btn.text-rose:hover {
-          color: var(--accent-rose);
-          background: rgba(244, 63, 94, 0.08);
+        .editor-action-clear:hover {
+          color: #f87171;
+          background: rgba(248, 113, 113, 0.07);
         }
 
+        /* Body */
         .editor-body {
           display: flex;
-          height: 350px;
-          position: relative;
+          height: 340px;
         }
 
-        .line-numbers-col {
-          width: 48px;
-          padding: 16px 0;
-          background: #090c10;
-          border-right: 1px solid var(--border-color);
+        /* Gutter */
+        .editor-gutter {
+          width: 44px;
+          padding: 14px 0;
+          background: #0d1117;
+          border-right: 1px solid rgba(255,255,255,0.05);
           display: flex;
           flex-direction: column;
           align-items: flex-end;
           padding-right: 10px;
           user-select: none;
           overflow-y: hidden;
-          font-family: var(--font-mono);
-          font-size: 0.85rem;
-          color: #484f58;
-          line-height: 1.6;
+          flex-shrink: 0;
         }
 
-        .line-number-item {
-          height: 22.4px; /* matching line-height of textarea */
+        .editor-line-num {
+          font-family: var(--font-mono);
+          font-size: 0.78rem;
+          color: #3d4451;
+          height: 22px;
           display: flex;
           align-items: center;
+          line-height: 1;
         }
 
-        .editor-textarea-control {
+        /* Textarea */
+        .editor-textarea {
           flex: 1;
           background: transparent;
           color: #c9d1d9;
           border: none;
           outline: none;
           resize: none;
-          padding: 16px;
+          padding: 14px 16px;
           font-family: var(--font-mono);
-          font-size: 0.85rem;
-          line-height: 1.6;
+          font-size: 0.84rem;
+          line-height: 22px;
           overflow-y: auto;
           white-space: pre;
           tab-size: 4;
+          caret-color: var(--accent);
         }
 
-        .editor-textarea-control::placeholder {
-          color: #57606a;
+        .editor-textarea::placeholder {
+          color: #3d4451;
           font-style: italic;
+        }
+
+        .editor-textarea:focus {
+          outline: none;
         }
       `}</style>
     </div>

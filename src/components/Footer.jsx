@@ -1,144 +1,125 @@
 import React from 'react';
-import { Terminal, Heart } from 'lucide-react';
+import { Code2 } from 'lucide-react';
 
 export default function Footer({ setCurrentPage }) {
-  const handleNavClick = (pageId) => {
+  const handleNav = (pageId) => {
     setCurrentPage(pageId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <footer className="footer-container">
-      <div className="footer-content">
-        <div className="footer-left">
-          <div className="footer-logo" onClick={() => handleNavClick('home')}>
-            <Terminal size={16} className="logo-icon" />
-            <span>CodeCompanion</span>
-          </div>
-          <p className="footer-tagline">Your friendly guide through loops, variables, and error messages.</p>
+    <footer className="footer">
+      <div className="footer-inner">
+        <div className="footer-brand">
+          <button className="footer-logo" onClick={() => handleNav('home')} aria-label="Go to home">
+            <Code2 size={16} />
+            <span>Code Companion</span>
+          </button>
+          <p className="footer-tagline">Learn. Understand. Build.</p>
         </div>
-        
-        <div className="footer-links-group">
-          <button onClick={() => handleNavClick('home')} className="footer-link">Dashboard</button>
-          <button onClick={() => handleNavClick('chat')} className="footer-link">Coding Chat</button>
-          <button onClick={() => handleNavClick('explainer')} className="footer-link">Code Explainer</button>
-          <button onClick={() => handleNavClick('topics')} className="footer-link">Topics</button>
-          <button onClick={() => handleNavClick('about')} className="footer-link">Documentation & Workflow</button>
-        </div>
+
+        <nav className="footer-nav" aria-label="Footer navigation">
+          <button onClick={() => handleNav('home')}      className="footer-link">Home</button>
+          <button onClick={() => handleNav('chat')}      className="footer-link">AI Tutor</button>
+          <button onClick={() => handleNav('explainer')} className="footer-link">Code Companion</button>
+          <button onClick={() => handleNav('topics')}    className="footer-link">Topics</button>
+          <button onClick={() => handleNav('about')}     className="footer-link">About</button>
+        </nav>
       </div>
-      
+
       <div className="footer-bottom">
-        <p>&copy; {new Date().getFullYear()} Your Friendly Code Companion. Prototype for educational demonstration.</p>
-        <p className="footer-credit">
-          Made with <Heart size={12} className="heart-icon" /> for programming beginners
-        </p>
+        <p>© {new Date().getFullYear()} Code Companion · AI-powered programming education</p>
       </div>
 
       <style>{`
-        .footer-container {
-          background: rgba(17, 24, 39, 0.4);
-          border-top: 1px solid var(--border-color);
-          padding: 40px 16px 20px 16px;
+        .footer {
+          background: var(--bg-surface);
+          border-top: 1px solid var(--border);
           margin-top: auto;
           width: 100%;
         }
 
-        .footer-content {
+        .footer-inner {
           max-width: 1200px;
           margin: 0 auto;
+          padding: 32px 20px 24px;
           display: flex;
-          justify-content: flex-start;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 40px;
           flex-wrap: wrap;
-          gap: 60px;
-          margin-bottom: 30px;
         }
 
-        .footer-left {
-          flex: 1;
-          min-width: 250px;
+        .footer-brand {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
 
         .footer-logo {
           display: flex;
           align-items: center;
           gap: 8px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
           font-family: var(--font-heading);
           font-weight: 700;
-          font-size: 1.1rem;
-          color: var(--text-main);
-          margin-bottom: 12px;
-          cursor: pointer;
+          font-size: 1rem;
+          color: var(--text-primary);
+          transition: var(--transition-fast);
         }
 
-        .logo-icon {
-          color: var(--primary);
-        }
+        .footer-logo:hover { color: var(--accent); }
+        .footer-logo svg { color: var(--accent); }
 
         .footer-tagline {
-          font-size: 0.85rem;
-          color: var(--text-muted);
-          max-width: 320px;
+          font-size: 0.82rem;
+          color: var(--text-tertiary);
+          font-style: italic;
         }
 
-        .footer-links-group {
+        .footer-nav {
           display: flex;
-          gap: 20px;
+          gap: 6px;
           flex-wrap: wrap;
           align-items: center;
         }
 
         .footer-link {
-          background: transparent;
+          background: none;
           border: none;
-          color: var(--text-muted);
+          color: var(--text-secondary);
           font-size: 0.85rem;
-          cursor: pointer;
           font-family: var(--font-sans);
+          cursor: pointer;
+          padding: 4px 10px;
+          border-radius: 5px;
           transition: var(--transition-fast);
         }
 
         .footer-link:hover {
-          color: var(--primary);
-          text-decoration: underline;
+          color: var(--text-primary);
+          background: rgba(255,255,255,0.05);
         }
 
         .footer-bottom {
           max-width: 1200px;
           margin: 0 auto;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-          padding-top: 20px;
-          display: flex;
-          justify-content: space-between;
-          flex-wrap: wrap;
-          gap: 16px;
-          font-size: 0.8rem;
-          color: var(--text-dim);
+          padding: 14px 20px;
+          border-top: 1px solid rgba(255,255,255,0.04);
+          font-size: 0.78rem;
+          color: var(--text-tertiary);
         }
 
-        .footer-credit {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .heart-icon {
-          color: var(--accent-rose);
-          fill: var(--accent-rose);
-        }
-
-        @media (max-width: 768px) {
-          .footer-content {
+        @media (max-width: 640px) {
+          .footer-inner {
             flex-direction: column;
             gap: 24px;
           }
-          .footer-links-group {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 12px;
-          }
-          .footer-bottom {
-            flex-direction: column;
-            align-items: flex-start;
+          .footer-nav {
+            gap: 4px;
           }
         }
       `}</style>

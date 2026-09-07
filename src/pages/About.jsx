@@ -1,394 +1,410 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Target, Layers, ArrowRight, User, Terminal, Cpu, CheckCircle } from 'lucide-react';
+import React from 'react';
+import { Code2, MessageSquare, BookOpen, Cpu, Layers, ArrowRight } from 'lucide-react';
+
+const TECH_STACK = [
+  { label: 'Frontend',    value: 'React + Vite',             note: 'Single-page application' },
+  { label: 'Backend',     value: 'Node.js + Express',         note: 'REST API server' },
+  { label: 'AI Engine',   value: 'Google Gemini',             note: 'gemini-3.6-flash via @google/genai' },
+  { label: 'Language',    value: 'JavaScript (ES Modules)',   note: 'Frontend & backend' },
+  { label: 'Styling',     value: 'Vanilla CSS',               note: 'Custom design system' },
+  { label: 'Icons',       value: 'Lucide React',              note: 'UI icon library' },
+];
+
+const FEATURES = [
+  {
+    icon: Code2,
+    title: 'Code Companion',
+    desc: 'Paste any code snippet and get structured AI feedback: what it does, whether there\'s an issue, and how to fix or improve it.',
+    color: '#2563eb',
+  },
+  {
+    icon: MessageSquare,
+    title: 'AI Tutor Chat',
+    desc: 'Ask programming questions in plain English and get clear, beginner-friendly explanations with working code examples.',
+    color: '#0d9488',
+  },
+  {
+    icon: BookOpen,
+    title: 'Learning Topics',
+    desc: 'Browse structured concept guides covering variables, loops, functions, OOP, debugging, and more — each with analogies and demos.',
+    color: '#7c3aed',
+  },
+];
+
+const HOW_IT_WORKS = [
+  { step: '01', title: 'You paste code or ask a question', desc: 'No setup needed. Just write or paste directly into the interface.' },
+  { step: '02', title: 'Code Companion sends it to Gemini', desc: 'Your input is sent to the backend, which builds a structured pedagogical prompt.' },
+  { step: '03', title: 'Gemini analyzes and responds', desc: 'The AI returns a structured response: status, explanation, issue, fix, and follow-up learning.' },
+  { step: '04', title: 'You see organized feedback', desc: 'The UI renders the response clearly — no raw JSON, no walls of text, just readable learning guidance.' },
+];
 
 export default function About() {
-  const [activeStep, setActiveStep] = useState(0);
-
-  const objectives = [
-    "Help beginners understand programming concepts through analogies",
-    "Provide conversational coding assistance with immediate feedback",
-    "Explain buggy snippets in simple, jargon-free language",
-    "Help users identify common coding syntax and type errors",
-    "Provide verified copy-pasteable code examples for practice"
-  ];
-
-  const features = [
-    { title: "Dashboard Hub", desc: "A user-friendly home panel containing quick action portals and topic lists." },
-    { title: "Coding Chatbot", desc: "A mock conversational interface that answers coding questions asynchronously." },
-    { title: "Code Explainer", desc: "An IDE-like panel mapping diagnostics, compile error checking, and code simplifications." },
-    { title: "Learning Topics", desc: "A conceptual list expanding analogies, code examples, and beginner gotchas." }
-  ];
-
-  const workflowSteps = [
-    {
-      title: "User Input",
-      desc: "User types a programming question or pastes a snippet of code in the editor.",
-      icon: User,
-      color: "#60a5fa"
-    },
-    {
-      title: "Frontend Interface",
-      desc: "The UI processes input validation, handles tab switches, and updates UI status.",
-      icon: Terminal,
-      color: "#a78bfa"
-    },
-    {
-      title: "Processing Block",
-      desc: "The mock AI matches keywords and code structures using deterministic rules.",
-      icon: Cpu,
-      color: "#2dd4bf"
-    },
-    {
-      title: "Explanation & Tips",
-      desc: "The system outputs clean explanations, compile reports, and analogy breakdowns.",
-      icon: ShieldCheck,
-      color: "#fb7185"
-    }
-  ];
-
   return (
-    <div className="about-page-container">
-      {/* Title */}
-      <div className="about-header">
-        <h1 className="about-title">About & Documentation</h1>
-        <p className="about-subtitle">Project goals, architecture overview, and design specifications.</p>
+    <div className="about-page">
+
+      {/* Header */}
+      <div className="page-header">
+        <h1 className="page-title">About Code Companion</h1>
+        <p className="page-subtitle">An AI-powered programming tutor built to help beginners actually understand their code.</p>
       </div>
 
-      {/* Intro section */}
-      <div className="grid-2">
-        <section className="doc-section glass-panel">
-          <h2 className="doc-section-title">
-            <Target size={20} className="sec-icon text-blue" />
-            <span>Problem Statement</span>
-          </h2>
-          <div className="doc-content">
-            <p>
-              Programming beginners, college students, and self-taught developers often struggle to understand 
-              complex programming concepts when faced with dry, technical documentation. 
+      {/* What is it */}
+      <section className="about-section">
+        <div className="about-card about-intro-card">
+          <div className="intro-icon">
+            <Cpu size={24} />
+          </div>
+          <div>
+            <h2 className="about-card-title">What is Code Companion?</h2>
+            <p className="about-card-text">
+              Code Companion is an AI programming tutor designed specifically for learners who want to 
+              <strong> understand</strong> their code, not just get answers.
             </p>
-            <p style={{ marginTop: '12px' }}>
-              Standard compiler error messages are frequently cryptic and confusing, leading to frustration 
-              and slow progress. Traditional tools give answer resolutions without teaching the underlying logic.
+            <p className="about-card-text" style={{ marginTop: '10px' }}>
+              Most tools give you a solution. Code Companion gives you the <em>why</em> behind it — 
+              explaining what your code does, what might be wrong, why the error happens, and how 
+              to think about fixing it.
             </p>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="doc-section glass-panel">
-          <h2 className="doc-section-title">
-            <CheckCircle size={20} className="sec-icon text-purple" />
-            <span>Proposed Solution</span>
-          </h2>
-          <div className="doc-content">
-            <p>
-              <strong>Your Friendly Code Companion</strong> acts as an interactive coding tutor. It translates 
-              complex coding structures into simple terms using real-world analogies.
-            </p>
-            <p style={{ marginTop: '12px' }}>
-              By combining a chat interface with a dedicated Code Explainer and structured learning paths, 
-              it allows students to learn interactively and debug their code with step-by-step guidance.
-            </p>
-          </div>
-        </section>
-      </div>
-
-      {/* System Workflow (Interactive Stepper) */}
-      <section className="workflow-section glass-panel">
-        <h2 className="doc-section-title">
-          <Layers size={20} className="sec-icon text-teal" />
-          <span>Interactive System Workflow</span>
-        </h2>
-        <p className="workflow-sub">Hover or click on the steps below to inspect how information flows through the application.</p>
-        
-        <div className="workflow-stepper">
-          {workflowSteps.map((step, index) => {
-            const StepIcon = step.icon;
-            const isSelected = activeStep === index;
-            
+      {/* Features */}
+      <section className="about-section">
+        <h2 className="section-title">Features</h2>
+        <div className="features-grid">
+          {FEATURES.map((f) => {
+            const Icon = f.icon;
             return (
-              <div 
-                key={index} 
-                className={`workflow-step-card ${isSelected ? 'active' : ''}`}
-                onMouseEnter={() => setActiveStep(index)}
-                onClick={() => setActiveStep(index)}
-                style={{ '--step-color': step.color }}
-              >
-                <div className="step-num">{index + 1}</div>
-                <div className="step-card-header">
-                  <div className="step-icon-wrapper">
-                    <StepIcon size={20} />
-                  </div>
-                  <h3>{step.title}</h3>
+              <div key={f.title} className="feature-card">
+                <div className="feature-card-icon" style={{ background: `${f.color}12`, borderColor: `${f.color}25`, color: f.color }}>
+                  <Icon size={20} />
                 </div>
-                <p className="step-card-desc">{step.desc}</p>
-                
-                {index < workflowSteps.length - 1 && (
-                  <div className="step-arrow-divider">
-                    <ArrowRight size={20} />
-                  </div>
-                )}
+                <h3 className="feature-card-title">{f.title}</h3>
+                <p className="feature-card-desc">{f.desc}</p>
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* Objectives and Specs grid */}
-      <div className="grid-2">
-        {/* Objectives */}
-        <section className="doc-section glass-panel">
-          <h2 className="doc-section-title">Objectives</h2>
-          <ul className="objectives-list">
-            {objectives.map((obj, index) => (
-              <li key={index} className="objective-item">
-                <span className="obj-checkbox">✓</span>
-                <span>{obj}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* How it works */}
+      <section className="about-section">
+        <h2 className="section-title">How It Works</h2>
+        <div className="how-grid">
+          {HOW_IT_WORKS.map((item, i) => (
+            <div key={i} className="how-item">
+              <div className="how-step-num">{item.step}</div>
+              <div className="how-content">
+                <h3 className="how-title">{item.title}</h3>
+                <p className="how-desc">{item.desc}</p>
+              </div>
+              {i < HOW_IT_WORKS.length - 1 && (
+                <div className="how-arrow"><ArrowRight size={16} /></div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
 
-        {/* Tech Stack and Details */}
-        <section className="doc-section glass-panel">
-          <h2 className="doc-section-title">Technology Stack</h2>
-          <div className="tech-stack-details">
-            <div className="tech-item">
-              <span className="tech-label">Core framework:</span>
-              <span className="tech-value">React (Vite)</span>
-            </div>
-            <div className="tech-item">
-              <span className="tech-label">Styling:</span>
-              <span className="tech-value">Vanilla CSS (Custom design system)</span>
-            </div>
-            <div className="tech-item">
-              <span className="tech-label">Icons package:</span>
-              <span className="tech-value">Lucide React Icons</span>
-            </div>
-            <div className="tech-item">
-              <span className="tech-label">Mock logic:</span>
-              <span className="tech-value">Keyword mapper & analysis rules</span>
-            </div>
-            <div className="tech-item" style={{ borderBottom: 'none' }}>
-              <span className="tech-label">Target build:</span>
-              <span className="tech-value">Static frontend prototype</span>
-            </div>
+      {/* Tech stack */}
+      <section className="about-section">
+        <h2 className="section-title">Technology</h2>
+        <div className="tech-card">
+          <div className="tech-header">
+            <Layers size={16} />
+            <span>Tech Stack</span>
           </div>
-        </section>
-      </div>
+          <div className="tech-table">
+            {TECH_STACK.map((item) => (
+              <div key={item.label} className="tech-row">
+                <span className="tech-label">{item.label}</span>
+                <div className="tech-right">
+                  <span className="tech-value">{item.value}</span>
+                  <span className="tech-note">{item.note}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Design principles */}
+      <section className="about-section">
+        <div className="principle-banner">
+          <h2 className="principle-title">"The user should never have to think: should I click Explain or Debug?"</h2>
+          <p className="principle-sub">
+            Code Companion is built around one core insight: learners don't know if their code is correct 
+            or broken — that's exactly why they need help. So the entire experience starts with 
+            a single action: <strong>Analyze Code</strong>.
+          </p>
+        </div>
+      </section>
 
       <style>{`
-        .about-page-container {
+        .about-page {
           display: flex;
           flex-direction: column;
-          gap: 24px;
-          animation: fadeIn 0.4s ease-out;
+          gap: 40px;
+          animation: pageEnter 0.3s ease-out;
+          max-width: 900px;
         }
 
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .about-header {
-          margin-bottom: 8px;
-        }
-
-        .about-title {
-          font-size: 2.2rem;
-          font-family: var(--font-heading);
-          margin-bottom: 4px;
-        }
-
-        .about-subtitle {
-          color: var(--text-muted);
-          font-size: 0.95rem;
-        }
-
-        .doc-section {
-          padding: 28px;
+        .about-section {
           display: flex;
           flex-direction: column;
           gap: 16px;
-          text-align: left;
         }
 
-        .doc-section-title {
-          font-size: 1.25rem;
+        .section-title {
+          font-size: 1.1rem;
           font-weight: 700;
+          color: var(--text-primary);
+          font-family: var(--font-heading);
+          letter-spacing: -0.01em;
+        }
+
+        /* Intro card */
+        .about-card {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 24px;
+        }
+
+        .about-intro-card {
           display: flex;
-          align-items: center;
-          gap: 10px;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 12px;
+          gap: 18px;
+          align-items: flex-start;
         }
 
-        .sec-icon {
-          flex-shrink: 0;
-        }
-
-        .text-blue { color: var(--primary); }
-        .text-purple { color: var(--secondary); }
-        .text-teal { color: var(--accent-teal); }
-
-        .doc-content p {
-          font-size: 0.95rem;
-          color: var(--text-muted);
-          line-height: 1.6;
-        }
-
-        /* Workflow Stepper */
-        .workflow-section {
-          padding: 32px 28px;
-          text-align: left;
-        }
-
-        .workflow-sub {
-          font-size: 0.9rem;
-          color: var(--text-muted);
-          margin-bottom: 24px;
-        }
-
-        .workflow-stepper {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 20px;
-          position: relative;
-        }
-
-        @media (max-width: 900px) {
-          .workflow-stepper {
-            grid-template-columns: 1fr;
-            gap: 24px;
-          }
-        }
-
-        .workflow-step-card {
-          position: relative;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 24px 20px;
-          cursor: pointer;
-          transition: var(--transition-normal);
-        }
-
-        .workflow-step-card:hover, .workflow-step-card.active {
-          background: rgba(255, 255, 255, 0.04);
-          border-color: var(--step-color);
-          box-shadow: 0 0 20px rgba(255, 255, 255, 0.02);
-        }
-
-        .step-num {
-          position: absolute;
-          top: -12px;
-          left: 20px;
-          background: var(--bg-main);
-          border: 1px solid var(--border-color);
-          color: var(--text-muted);
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
+        .intro-icon {
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 0.75rem;
+          width: 44px;
+          height: 44px;
+          border-radius: 10px;
+          background: var(--accent-subtle);
+          border: 1px solid var(--accent-border);
+          color: var(--accent);
+          flex-shrink: 0;
+        }
+
+        .about-card-title {
+          font-size: 1.15rem;
           font-weight: 700;
+          margin-bottom: 10px;
         }
 
-        .workflow-step-card.active .step-num {
-          background: var(--step-color);
-          color: #000;
-          border-color: var(--step-color);
+        .about-card-text {
+          font-size: 0.92rem;
+          color: var(--text-secondary);
+          line-height: 1.65;
         }
 
-        .step-card-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 12px;
-        }
+        .about-card-text strong { color: var(--text-primary); }
+        .about-card-text em    { color: var(--accent); font-style: normal; font-weight: 600; }
 
-        .step-icon-wrapper {
-          color: var(--text-muted);
-          transition: var(--transition-fast);
-        }
-
-        .workflow-step-card:hover .step-icon-wrapper, 
-        .workflow-step-card.active .step-icon-wrapper {
-          color: var(--step-color);
-        }
-
-        .step-card-header h3 {
-          font-size: 1.05rem;
-          font-weight: 600;
-        }
-
-        .step-card-desc {
-          font-size: 0.85rem;
-          color: var(--text-muted);
-          line-height: 1.4;
-        }
-
-        /* Connecting arrow indicators */
-        .step-arrow-divider {
-          position: absolute;
-          right: -22px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--border-color);
-          pointer-events: none;
-          z-index: 2;
-        }
-
-        @media (max-width: 900px) {
-          .step-arrow-divider {
-            display: none;
-          }
-        }
-
-        /* Objectives bullet list */
-        .objectives-list {
-          list-style: none;
-          display: flex;
-          flex-direction: column;
+        /* Features grid */
+        .features-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
           gap: 14px;
         }
 
-        .objective-item {
+        .feature-card {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 20px;
           display: flex;
-          align-items: flex-start;
+          flex-direction: column;
           gap: 10px;
+          transition: var(--transition-fast);
+        }
+
+        .feature-card:hover {
+          border-color: var(--border-hover);
+          background: var(--bg-elevated);
+        }
+
+        .feature-card-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 9px;
+          border: 1px solid;
+        }
+
+        .feature-card-title {
           font-size: 0.95rem;
-          color: var(--text-muted);
-          line-height: 1.5;
+          font-weight: 700;
+          color: var(--text-primary);
         }
 
-        .obj-checkbox {
-          color: var(--accent-teal);
+        .feature-card-desc {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+
+        /* How it works */
+        .how-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 0;
+          background: var(--border);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+          position: relative;
+        }
+
+        .how-item {
+          background: var(--bg-surface);
+          padding: 20px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          position: relative;
+        }
+
+        .how-step-num {
+          font-size: 0.7rem;
           font-weight: 800;
+          font-family: var(--font-mono);
+          color: var(--accent);
+          letter-spacing: 0.05em;
         }
 
-        /* Tech Stack Table/Details */
-        .tech-stack-details {
+        .how-title {
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          line-height: 1.3;
+        }
+
+        .how-desc {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+
+        .how-arrow {
+          display: none; /* handled by grid gap */
+        }
+
+        /* Tech stack */
+        .tech-card {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+        }
+
+        .tech-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 18px;
+          background: var(--bg-elevated);
+          border-bottom: 1px solid var(--border);
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+        }
+
+        .tech-table {
           display: flex;
           flex-direction: column;
         }
 
-        .tech-item {
+        .tech-row {
           display: flex;
           justify-content: space-between;
-          padding: 12px 0;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-          font-size: 0.9rem;
+          align-items: center;
+          padding: 12px 18px;
+          border-bottom: 1px solid rgba(255,255,255,0.04);
+          gap: 16px;
         }
 
+        .tech-row:last-child { border-bottom: none; }
+
         .tech-label {
-          color: var(--text-muted);
-          font-weight: 500;
+          font-size: 0.84rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          min-width: 90px;
+        }
+
+        .tech-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .tech-value {
-          color: var(--text-main);
+          font-size: 0.88rem;
+          color: var(--text-primary);
           font-weight: 600;
+        }
+
+        .tech-note {
+          font-size: 0.77rem;
+          color: var(--text-tertiary);
+        }
+
+        /* Principle banner */
+        .principle-banner {
+          background: var(--accent-subtle);
+          border: 1px solid var(--accent-border);
+          border-radius: var(--radius-lg);
+          padding: 28px 32px;
+        }
+
+        .principle-title {
+          font-size: 1.2rem;
+          font-style: italic;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 14px;
+          line-height: 1.4;
+        }
+
+        .principle-sub {
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+          line-height: 1.65;
+          max-width: 720px;
+        }
+
+        .principle-sub strong { color: var(--text-primary); }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+          .features-grid {
+            grid-template-columns: 1fr;
+          }
+          .how-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .how-grid {
+            grid-template-columns: 1fr;
+          }
+          .about-intro-card {
+            flex-direction: column;
+          }
+          .principle-banner {
+            padding: 20px;
+          }
         }
       `}</style>
     </div>

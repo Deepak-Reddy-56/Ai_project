@@ -1,221 +1,158 @@
 import React, { useState } from 'react';
-import { HelpCircle, Sparkles } from 'lucide-react';
 import ChatBox from '../components/ChatBox';
 import { chatResponses } from '../data/demoResponses';
+import { askAI } from '../services/aiService';
+
+const SUGGESTED_PROMPTS = [
+  { label: 'Explain recursion to a beginner', query: 'Explain recursion to a beginner using a simple real-life analogy and a small Python example.' },
+  { label: 'Explain loops like I\'m a beginner', query: 'Explain how for loops work in Python with a simple example.' },
+  { label: 'What is a function?', query: 'What is a function in programming? Explain with a real-world analogy.' },
+  { label: 'List vs Tuple — difference?', query: 'What is the difference between a list and a tuple in Python?' },
+];
 
 export default function Chat() {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: 'Hi! I am your **Code Companion**. 🐍 \n\nI can help you understand variables, loops, lists, functions, OOP, and debugging. Ask me a question, or try one of the suggestions below!'
-    }
+      text: 'Hi! I\'m your **Code Companion** AI Tutor.\n\nAsk me any programming question — I\'ll explain it in plain English with examples you can actually understand.',
+    },
   ]);
   const [isTyping, setIsTyping] = useState(false);
 
-  const suggestedPrompts = [
-    { label: 'Explain for loop', query: 'for loop' },
-    { label: 'What is a variable?', query: 'variable' },
-    { label: 'Explain recursion', query: 'recursion' },
-    { label: 'What is OOP?', query: 'oop' }
-  ];
-
-  const handleSendMessage = (text) => {
-    // Add user message
-    const userMessage = {
-      id: `msg-${Date.now()}-user`,
-      sender: 'user',
-      text: text
-    };
+  const handleSendMessage = async (text) => {
+    const userMessage = { id: `msg-${Date.now()}-user`, sender: 'user', text };
     setMessages((prev) => [...prev, userMessage]);
-
-    // Show typing state
     setIsTyping(true);
 
-    // Keyword lookup logic
-    setTimeout(() => {
-      const cleanText = text.toLowerCase().trim();
+    try {
+      const aiResult = await askAI({ mode: 'chat', question: text, language: 'python', level: 'beginner' });
+
       let responseText = '';
-
-      // Check for matching keywords in the chatResponses keys
-      const matchedKey = Object.keys(chatResponses).find(key => 
-        cleanText.includes(key)
-      );
-
-      if (matchedKey) {
-        responseText = chatResponses[matchedKey];
+      if (aiResult.success && aiResult.response) {
+        responseText = aiResult.response;
       } else {
-        responseText = `That's a great question! \n\nIn this prototype version, I have curated answers for core concepts. Try asking about: \n- **variables** or **constants**\n- **for loop** or **while loop**\n- **lists** or **arrays**\n- **functions** or **recursion**\n- **OOP** (Object-Oriented Programming)\n- **debugging** or **fixing errors**\n\nOr click one of the suggested prompts at the top!`;
+        console.warn('⚠️ Gemini unavailable, using fallback:', aiResult.error);
+        const cleanText = text.toLowerCase().trim();
+        const matchedKey = Object.keys(chatResponses).find((key) => cleanText.includes(key));
+        const notice = `⚠️ AI tutor is temporarily unavailable. Using offline fallback. (${aiResult.error || 'Server unavailable'})\n\n`;
+        responseText = matchedKey
+          ? `${notice}${chatResponses[matchedKey]}`
+          : `${notice}Topics I can help with locally:\n- **variables**\n- **loops**\n- **lists**\n- **functions**\n- **OOP**\n- **debugging**`;
       }
 
-      // Add assistant response
-      const assistantMessage = {
-        id: `msg-${Date.now()}-assistant`,
-        sender: 'assistant',
-        text: responseText
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `msg-${Date.now()}-assistant`, sender: 'assistant', text: responseText },
+      ]);
+    } catch (err) {
+      console.error('Chat error:', err);
+      setMessages((prev) => [
+        ...prev,
+        { id: `msg-${Date.now()}-assistant`, sender: 'assistant', text: `⚠️ Error: ${err.message}` },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, 1200); // 1.2 second delay for realistic feel
+    }
   };
 
   const handleClearChat = () => {
     setMessages([
       {
-        id: 'welcome',
+        id: 'welcome-reset',
         sender: 'assistant',
-        text: 'Chat history cleared. What programming topic can I explain next?'
-      }
+        text: 'Chat cleared. What would you like to learn about next?',
+      },
     ]);
   };
 
   return (
-    <div className="chat-page-container">
-      {/* Header Info */}
-      <div className="chat-page-header">
-        <div>
-          <h1 className="chat-title">Coding Chatbot</h1>
-          <p className="chat-subtitle">Ask questions in plain English and learn with simple analogies.</p>
-        </div>
-        <div className="chat-header-tips glass-panel">
-          <HelpCircle size={16} className="tip-icon" />
-          <span>Tip: Ask for specific topics like 'explain lists' or 'what is recursion?'</span>
-        </div>
+    <div className="chat-page">
+      {/* Header */}
+      <div className="page-header">
+        <h1 className="page-title">AI Tutor</h1>
+        <p className="page-subtitle">Ask questions, learn concepts, and get unstuck.</p>
       </div>
 
-      {/* Suggested Quick Buttons */}
-      <div className="suggested-prompts-bar">
-        <span className="suggested-title">Quick Prompts:</span>
-        <div className="suggested-buttons">
-          {suggestedPrompts.map((prompt, index) => (
+      {/* Suggested prompts */}
+      <div className="prompts-bar">
+        <span className="prompts-label">Try asking:</span>
+        <div className="prompts-list">
+          {SUGGESTED_PROMPTS.map((p, i) => (
             <button
-              key={index}
-              onClick={() => handleSendMessage(prompt.query)}
+              key={i}
+              onClick={() => handleSendMessage(p.query)}
               disabled={isTyping}
-              className="suggested-btn glass-panel"
+              className="prompt-chip"
             >
-              <Sparkles size={12} className="btn-sparkle" />
-              <span>{prompt.label}</span>
+              {p.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Chat Box Container */}
-      <div className="chat-box-wrapper">
-        <ChatBox
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          isTyping={isTyping}
-          onClearChat={handleClearChat}
-        />
-      </div>
+      {/* Chat box */}
+      <ChatBox
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        isTyping={isTyping}
+        onClearChat={handleClearChat}
+      />
 
       <style>{`
-        .chat-page-container {
+        .chat-page {
           display: flex;
           flex-direction: column;
           gap: 20px;
-          animation: fadeIn 0.4s ease-out;
+          animation: pageEnter 0.3s ease-out;
         }
 
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .chat-page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .chat-title {
-          font-size: 2.2rem;
-          font-family: var(--font-heading);
-          margin-bottom: 4px;
-        }
-
-        .chat-subtitle {
-          color: var(--text-muted);
-          font-size: 0.95rem;
-        }
-
-        .chat-header-tips {
+        /* Prompt chips */
+        .prompts-bar {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          font-size: 0.8rem;
-          color: var(--text-muted);
-          background: rgba(59, 130, 246, 0.05);
-          border-color: rgba(59, 130, 246, 0.15);
-        }
-
-        .tip-icon {
-          color: var(--primary);
-        }
-
-        /* Suggested prompt buttons bar */
-        .suggested-prompts-bar {
-          display: flex;
-          align-items: center;
-          gap: 12px;
+          gap: 10px;
           flex-wrap: wrap;
         }
 
-        .suggested-title {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: var(--text-dim);
+        .prompts-label {
+          font-size: 0.8rem;
+          color: var(--text-tertiary);
+          font-weight: 500;
+          white-space: nowrap;
         }
 
-        .suggested-buttons {
+        .prompts-list {
           display: flex;
-          gap: 8px;
+          gap: 7px;
           flex-wrap: wrap;
         }
 
-        .suggested-btn {
-          display: flex;
+        .prompt-chip {
+          display: inline-flex;
           align-items: center;
-          gap: 6px;
-          padding: 8px 14px;
-          border-radius: 20px;
+          padding: 6px 13px;
+          border-radius: 99px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
           font-size: 0.8rem;
-          color: var(--text-main);
-          cursor: pointer;
           font-family: var(--font-sans);
           font-weight: 500;
-          background: rgba(255, 255, 255, 0.02);
-          border-color: var(--border-color);
+          cursor: pointer;
           transition: var(--transition-fast);
+          white-space: nowrap;
         }
 
-        .suggested-btn:hover:not(:disabled) {
-          border-color: var(--primary);
-          background: rgba(59, 130, 246, 0.05);
-          transform: translateY(-1px);
+        .prompt-chip:hover:not(:disabled) {
+          border-color: var(--accent-border);
+          color: var(--text-primary);
+          background: var(--accent-subtle);
         }
 
-        .btn-sparkle {
-          color: var(--accent-amber);
-        }
-
-        .chat-box-wrapper {
-          width: 100%;
-        }
-
-        @media (max-width: 768px) {
-          .chat-page-header {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .chat-header-tips {
-            width: 100%;
-          }
+        .prompt-chip:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

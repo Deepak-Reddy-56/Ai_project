@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Cpu, Copy, Check } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 
 export default function ChatMessage({ message }) {
   const { sender, text } = message;
@@ -12,17 +12,13 @@ export default function ChatMessage({ message }) {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
-  // Helper to parse simple markdown formatting (code blocks, inline code, bold text)
   const parseMessageText = (rawText) => {
     if (!rawText) return null;
 
-    // Split by triple backticks for code blocks
     const parts = rawText.split('```');
-    
     return parts.map((part, index) => {
-      // If it's a code block (odd indices in split)
+      // Code block (odd indices)
       if (index % 2 === 1) {
-        // Separate language from code content
         const firstNewLine = part.indexOf('\n');
         let language = 'code';
         let codeContent = part;
@@ -34,260 +30,221 @@ export default function ChatMessage({ message }) {
             codeContent = part.substring(firstNewLine + 1);
           }
         }
-
-        // Strip trailing newline if present
         codeContent = codeContent.replace(/\n$/, '');
 
         return (
-          <div key={index} className="chat-code-block-wrapper">
-            <div className="chat-code-header">
-              <span className="chat-code-lang">{language.toUpperCase()}</span>
-              <button 
+          <div key={index} className="msg-code-block">
+            <div className="msg-code-header">
+              <span className="msg-code-lang">{language.toUpperCase()}</span>
+              <button
                 onClick={() => handleCopy(codeContent, index)}
-                className="chat-copy-btn"
+                className="msg-copy-btn"
                 title="Copy code"
+                aria-label="Copy code"
               >
                 {copiedIndex === index ? (
-                  <>
-                    <Check size={12} className="success-icon" />
-                    <span>Copied!</span>
-                  </>
+                  <><Check size={12} className="copy-success" /><span>Copied!</span></>
                 ) : (
-                  <>
-                    <Copy size={12} />
-                    <span>Copy</span>
-                  </>
+                  <><Copy size={12} /><span>Copy</span></>
                 )}
               </button>
             </div>
-            <pre className="chat-pre">
-              <code className="chat-code">{codeContent}</code>
+            <pre className="msg-code-pre">
+              <code>{codeContent}</code>
             </pre>
           </div>
         );
       }
 
-      // If it's regular text, parse bold (**text**) and inline code (`code`)
-      let textSegment = part;
-      
-      // We will parse line breaks
-      const lines = textSegment.split('\n').map((line, lineIdx) => {
-        // Regex replace **bold** with <strong>
-        // Regex replace `code` with <code>
-        // This is safe since we escaped code blocks already
-        
-        let formattedLine = line;
-        
-        // Escape HTML tags to prevent XSS in user input, but allow our custom inline styles
-        formattedLine = formattedLine
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-
-        // Parse Bold (**text**)
-        const boldRegex = /\*\*(.*?)\*\*/g;
-        formattedLine = formattedLine.replace(boldRegex, '<strong>$1</strong>');
-
-        // Parse Inline Code (`code`)
-        const inlineCodeRegex = /`(.*?)`/g;
-        formattedLine = formattedLine.replace(inlineCodeRegex, '<code class="inline-code">$1</code>');
+      // Text segment
+      const lines = part.split('\n').map((line, lineIdx) => {
+        let fmt = line
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
 
         return (
-          <span 
-            key={lineIdx} 
-            dangerouslySetInnerHTML={{ __html: formattedLine }} 
-            style={{ display: 'block', minHeight: line === '' ? '12px' : 'auto', marginBottom: '8px' }}
+          <span
+            key={lineIdx}
+            dangerouslySetInnerHTML={{ __html: fmt }}
+            style={{
+              display: 'block',
+              minHeight: line === '' ? '10px' : 'auto',
+              marginBottom: line !== '' ? '6px' : '0',
+            }}
           />
         );
       });
 
-      return <div key={index} className="text-paragraph">{lines}</div>;
+      return <div key={index} className="msg-text-chunk">{lines}</div>;
     });
   };
 
   return (
-    <div className={`message-row ${isAssistant ? 'assistant-row' : 'user-row'}`}>
-      <div className={`avatar-wrapper ${isAssistant ? 'assistant-avatar' : 'user-avatar'}`}>
-        {isAssistant ? <Cpu size={16} /> : <User size={16} />}
+    <div className={`msg-row ${isAssistant ? 'msg-assistant' : 'msg-user'}`}>
+      <div className={`msg-avatar ${isAssistant ? 'avatar-assistant' : 'avatar-user'}`} aria-hidden="true">
+        {isAssistant ? 'AI' : 'You'}
       </div>
-      
-      <div className={`message-bubble ${isAssistant ? 'assistant-bubble' : 'user-bubble'}`}>
-        <div className="message-sender-title">
-          {isAssistant ? 'Assistant' : 'You'}
-        </div>
-        <div className="message-text">
-          {parseMessageText(text)}
-        </div>
+
+      <div className={`msg-bubble ${isAssistant ? 'bubble-assistant' : 'bubble-user'}`}>
+        <div className="msg-sender">{isAssistant ? 'Tutor' : 'You'}</div>
+        <div className="msg-content">{parseMessageText(text)}</div>
       </div>
 
       <style>{`
-        .message-row {
+        .msg-row {
           display: flex;
-          gap: 12px;
-          margin-bottom: 24px;
+          gap: 11px;
+          margin-bottom: 20px;
           align-items: flex-start;
-          width: 100%;
-          animation: fadeInUp 0.3s ease-out;
+          animation: fadeInUp 0.22s ease-out;
         }
 
         @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
 
-        .user-row {
+        .msg-user {
           flex-direction: row-reverse;
         }
 
-        .avatar-wrapper {
+        .msg-avatar {
+          flex-shrink: 0;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          flex-shrink: 0;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+          font-size: 0.65rem;
+          font-weight: 700;
+          font-family: var(--font-sans);
+          letter-spacing: 0.02em;
         }
 
-        .assistant-avatar {
-          background: rgba(59, 130, 246, 0.15);
-          border: 1px solid rgba(59, 130, 246, 0.4);
-          color: var(--primary);
+        .avatar-assistant {
+          background: var(--accent-subtle);
+          border: 1px solid var(--accent-border);
+          color: var(--accent);
         }
 
-        .user-avatar {
-          background: rgba(139, 92, 246, 0.15);
-          border: 1px solid rgba(139, 92, 246, 0.4);
-          color: var(--secondary);
+        .avatar-user {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
         }
 
-        .message-bubble {
-          max-width: 75%;
-          padding: 16px;
-          border-radius: 16px;
-          font-size: 0.95rem;
-          color: var(--text-main);
-          box-shadow: var(--glass-shadow);
+        .msg-bubble {
+          max-width: 76%;
+          padding: 12px 14px;
+          font-size: 0.9rem;
+          line-height: 1.6;
+          color: var(--text-primary);
+          border-radius: 12px;
         }
 
-        .assistant-bubble {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-top-left-radius: 4px;
+        .bubble-assistant {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-top-left-radius: 3px;
         }
 
-        .user-bubble {
-          background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15));
-          border: 1px solid rgba(139, 92, 246, 0.3);
-          border-top-right-radius: 4px;
+        .bubble-user {
+          background: var(--accent-subtle);
+          border: 1px solid var(--accent-border);
+          border-top-right-radius: 3px;
         }
 
-        .message-sender-title {
-          font-family: var(--font-heading);
-          font-weight: 600;
-          font-size: 0.75rem;
+        .msg-sender {
+          font-size: 0.7rem;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          margin-bottom: 8px;
-          color: var(--text-muted);
+          letter-spacing: 0.06em;
+          margin-bottom: 6px;
+          color: var(--text-tertiary);
         }
 
-        .user-row .message-sender-title {
-          color: var(--secondary);
-          text-align: right;
-        }
+        .msg-assistant .msg-sender { color: var(--accent); }
+        .msg-user     .msg-sender { color: var(--text-secondary); text-align: right; }
 
-        .assistant-row .message-sender-title {
-          color: var(--primary);
-        }
-
-        .message-text {
+        .msg-content {
           word-break: break-word;
         }
 
-        .inline-code {
-          background: rgba(255, 255, 255, 0.08);
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-family: var(--font-mono);
-          font-size: 0.85em;
-          color: #f43f5e;
-          border: 1px solid rgba(255, 255, 255, 0.04);
-        }
-
-        .chat-code-block-wrapper {
-          border-radius: 8px;
+        /* Code blocks inside messages */
+        .msg-code-block {
+          border-radius: 7px;
           overflow: hidden;
-          margin: 12px 0;
-          border: 1px solid var(--border-color);
-          background: #0d1117;
+          margin: 10px 0;
+          border: 1px solid var(--border);
+          background: var(--bg-input);
         }
 
-        .chat-code-header {
+        .msg-code-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 8px 12px;
+          padding: 7px 12px;
           background: #161b22;
-          border-bottom: 1px solid var(--border-color);
-          font-size: 0.75rem;
-          color: var(--text-muted);
-          font-family: var(--font-sans);
+          border-bottom: 1px solid var(--border);
+          font-size: 0.72rem;
+          color: var(--text-tertiary);
         }
 
-        .chat-code-lang {
+        .msg-code-lang {
           font-weight: 600;
+          font-family: var(--font-mono);
+          letter-spacing: 0.04em;
         }
 
-        .chat-copy-btn {
-          display: flex;
+        .msg-copy-btn {
+          display: inline-flex;
           align-items: center;
           gap: 4px;
           background: transparent;
           border: none;
-          color: var(--text-muted);
+          color: var(--text-tertiary);
           cursor: pointer;
           font-family: var(--font-sans);
-          transition: var(--transition-fast);
+          font-size: 0.72rem;
           padding: 2px 6px;
           border-radius: 4px;
+          transition: var(--transition-fast);
         }
 
-        .chat-copy-btn:hover {
-          color: var(--text-main);
-          background: rgba(255, 255, 255, 0.05);
+        .msg-copy-btn:hover {
+          color: var(--text-primary);
+          background: rgba(255,255,255,0.06);
         }
 
-        .success-icon {
-          color: var(--accent-teal);
-        }
+        .copy-success { color: #4ade80; }
 
-        .chat-pre {
+        .msg-code-pre {
           padding: 12px;
           margin: 0;
           overflow-x: auto;
         }
 
-        .chat-code {
+        .msg-code-pre code {
           font-family: var(--font-mono);
-          font-size: 0.85rem;
+          font-size: 0.82rem;
           color: #c9d1d9;
-          line-height: 1.5;
+          line-height: 1.6;
         }
 
-        .text-paragraph {
-          margin-bottom: 12px;
+        .msg-text-chunk {
+          margin-bottom: 8px;
         }
-        
-        .text-paragraph:last-child {
+
+        .msg-text-chunk:last-child {
           margin-bottom: 0;
         }
 
-        @media (max-width: 768px) {
-          .message-bubble {
-            max-width: 85%;
-          }
+        @media (max-width: 640px) {
+          .msg-bubble { max-width: 88%; }
         }
       `}</style>
     </div>

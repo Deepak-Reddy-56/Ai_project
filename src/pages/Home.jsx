@@ -1,295 +1,429 @@
 import React from 'react';
-import { ArrowRight, MessageSquare, Code, BookOpen, Sparkles, Terminal } from 'lucide-react';
-import TopicCard from '../components/TopicCard';
-import { topicsData } from '../data/demoResponses';
+import { ArrowRight, MessageSquare, Code2, Search } from 'lucide-react';
 
-export default function Home({ setCurrentPage, setSelectedTopicId }) {
-  const handleTopicClick = (topicId) => {
-    setSelectedTopicId(topicId);
-    setCurrentPage('topics');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
+export default function Home({ setCurrentPage }) {
   return (
-    <div className="home-container">
-      {/* Hero Section */}
-      <section className="hero-section glass-panel">
-        <div className="hero-badge">
-          <Sparkles size={14} className="badge-icon" />
-          <span>Interactive Coding Companion</span>
+    <div className="home-page">
+
+      {/* ── Hero ────────────────────────────────────── */}
+      <section className="hero">
+        <div className="hero-eyebrow">
+          <span className="eyebrow-badge">AI Programming Tutor</span>
         </div>
-        
-        <h1 className="hero-title">
-          Your Friendly <br />
-          <span className="gradient-text">Code Companion</span>
+
+        <h1 className="hero-headline">
+          Learn to code by<br />
+          <span className="hero-accent">understanding</span> your code.
         </h1>
-        
-        <p className="hero-tagline">“Learn. Code. Debug. Understand.”</p>
-        <p className="hero-desc">
-          Struggling with syntax, loops, or complex errors? Code Companion gives you simple, 
-          jargon-free explanations, debugging guidance, and interactive exercises to help you master programming.
+
+        <p className="hero-body">
+          Your AI programming companion explains concepts, analyzes your code,
+          finds potential issues, and helps you learn step by step.
         </p>
 
         <div className="hero-ctas">
-          <button onClick={() => setCurrentPage('topics')} className="btn btn-primary">
-            <BookOpen size={18} />
-            <span>Start Learning</span>
+          <button
+            onClick={() => setCurrentPage('explainer')}
+            className="btn btn-primary hero-cta-primary"
+          >
+            <Code2 size={17} />
+            Try Code Companion
           </button>
-          <button onClick={() => setCurrentPage('chat')} className="btn btn-secondary">
-            <MessageSquare size={18} />
-            <span>Ask a Question</span>
+          <button
+            onClick={() => setCurrentPage('chat')}
+            className="btn btn-secondary"
+          >
+            <MessageSquare size={17} />
+            Ask the Tutor
           </button>
         </div>
       </section>
 
-      {/* Feature Quick Actions */}
+      {/* ── Product Preview ──────────────────────────── */}
+      <section className="preview-section">
+        <div className="preview-card">
+          {/* Left: Code */}
+          <div className="preview-editor">
+            <div className="preview-tab-bar">
+              <span className="preview-tab active">script.py</span>
+            </div>
+            <pre className="preview-code">{`numbers = [10, 20, 30]
+
+for i in range(len(numbers)):
+    print(numbers[i + 1])`}</pre>
+          </div>
+
+          {/* Divider arrow */}
+          <div className="preview-arrow">
+            <ArrowRight size={20} />
+          </div>
+
+          {/* Right: AI Result */}
+          <div className="preview-result">
+            <div className="preview-status-badge red">
+              🔴 Potential Issue Detected
+            </div>
+            <div className="preview-result-section">
+              <span className="preview-label">What went wrong</span>
+              <p>IndexError: list index out of range on the last iteration.</p>
+            </div>
+            <div className="preview-result-section">
+              <span className="preview-label">Why it happens</span>
+              <p>On the last loop, <code className="inline-code">i + 1</code> exceeds the list bounds.</p>
+            </div>
+            <div className="preview-result-section">
+              <span className="preview-label">Suggested fix</span>
+              <pre className="preview-fix-code">{"print(numbers[i])"}</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 3-Feature Strip ──────────────────────────── */}
       <section className="features-section">
-        <h2 className="section-title">Try Interactive Tools</h2>
-        <div className="grid-2">
-          {/* Card 1: Coding Chat */}
-          <div onClick={() => setCurrentPage('chat')} className="feature-card glass-panel glass-card-interactive">
-            <div className="feature-icon-wrapper blue-glow">
-              <MessageSquare size={24} className="feature-icon" />
+        <div className="features-grid">
+          <div className="feature-item">
+            <div className="feature-icon-wrap">
+              <MessageSquare size={20} />
             </div>
-            <h3 className="feature-card-title">Coding Chatbot</h3>
-            <p className="feature-card-desc">
-              Have a programming question? Ask our friendly assistant for clear answers, concept analogies, and example code.
+            <h3 className="feature-title">Ask</h3>
+            <p className="feature-desc">
+              Get beginner-friendly programming explanations in plain English.
             </p>
-            <div className="feature-card-link">
-              <span>Chat Now</span>
-              <ArrowRight size={16} />
-            </div>
+            <button
+              onClick={() => setCurrentPage('chat')}
+              className="feature-cta"
+            >
+              Ask the Tutor <ArrowRight size={14} />
+            </button>
           </div>
 
-          {/* Card 2: Code Explainer */}
-          <div onClick={() => setCurrentPage('explainer')} className="feature-card glass-panel glass-card-interactive animate-card">
-            <div className="feature-icon-wrapper purple-glow">
-              <Code size={24} className="feature-icon" />
+          <div className="feature-item">
+            <div className="feature-icon-wrap accent">
+              <Code2 size={20} />
             </div>
-            <h3 className="feature-card-title">Code Explainer & Debugger</h3>
-            <p className="feature-card-desc">
-              Paste your buggy or confusing code. Our tool will explain how it works, highlight errors, and offer suggestions to simplify it.
+            <h3 className="feature-title">Analyze</h3>
+            <p className="feature-desc">
+              Paste code and let Code Companion identify issues or explain how it works.
             </p>
-            <div className="feature-card-link">
-              <span>Explain Code</span>
-              <ArrowRight size={16} />
+            <button
+              onClick={() => setCurrentPage('explainer')}
+              className="feature-cta"
+            >
+              Analyze Code <ArrowRight size={14} />
+            </button>
+          </div>
+
+          <div className="feature-item">
+            <div className="feature-icon-wrap">
+              <Search size={20} />
             </div>
+            <h3 className="feature-title">Learn</h3>
+            <p className="feature-desc">
+              Turn confusing code into concepts you can actually understand and remember.
+            </p>
+            <button
+              onClick={() => setCurrentPage('topics')}
+              className="feature-cta"
+            >
+              Browse Topics <ArrowRight size={14} />
+            </button>
           </div>
-        </div>
-      </section>
-
-      {/* Learning Topics Grid */}
-      <section className="topics-section">
-        <div className="section-header">
-          <div>
-            <h2 className="section-title">Beginner Learning Topics</h2>
-            <p className="section-subtitle">Select a core concept to explore definitions, analogies, and code examples.</p>
-          </div>
-          <button onClick={() => setCurrentPage('topics')} className="btn btn-secondary btn-sm">
-            <span>View All Topics</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="topics-grid">
-          {topicsData.map((topic) => (
-            <TopicCard 
-              key={topic.id} 
-              topic={topic} 
-              onClick={() => handleTopicClick(topic.id)} 
-            />
-          ))}
         </div>
       </section>
 
       <style>{`
-        .home-container {
+        .home-page {
           display: flex;
           flex-direction: column;
-          gap: 64px;
-          animation: fadeIn 0.4s ease-out;
+          gap: 56px;
+          animation: pageEnter 0.3s ease-out;
         }
 
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Hero styling */
-        .hero-section {
-          padding: 60px 40px;
-          text-align: center;
+        /* ── Hero ── */
+        .hero {
           display: flex;
           flex-direction: column;
-          align-items: center;
-          position: relative;
-          background: radial-gradient(circle at top, rgba(99, 102, 241, 0.08) 0%, rgba(17, 24, 39, 0.45) 100%);
+          align-items: flex-start;
+          gap: 20px;
+          padding: 48px 0 16px;
+          max-width: 680px;
         }
 
-        .hero-badge {
+        .hero-eyebrow {
+          display: flex;
+        }
+
+        .eyebrow-badge {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          background: rgba(59, 130, 246, 0.1);
-          border: 1px solid rgba(59, 130, 246, 0.2);
-          padding: 6px 12px;
+          padding: 4px 12px;
           border-radius: 99px;
-          font-size: 0.8rem;
-          color: var(--primary);
+          border: 1px solid var(--accent-border);
+          background: var(--accent-subtle);
+          color: var(--accent);
+          font-size: 0.78rem;
           font-weight: 600;
-          margin-bottom: 24px;
+          letter-spacing: 0.02em;
           font-family: var(--font-sans);
         }
 
-        .badge-icon {
-          color: var(--primary);
-        }
-
-        .hero-title {
-          font-size: 3.5rem;
+        .hero-headline {
+          font-size: clamp(2rem, 4vw, 3rem);
+          font-family: var(--font-heading);
+          font-weight: 800;
           line-height: 1.15;
-          margin-bottom: 16px;
-          font-family: var(--font-heading);
           letter-spacing: -0.03em;
+          color: var(--text-primary);
         }
 
-        .gradient-text {
-          background: linear-gradient(135deg, var(--primary), var(--secondary));
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+        .hero-accent {
+          color: var(--accent);
         }
 
-        .hero-tagline {
-          font-family: var(--font-heading);
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: var(--text-main);
-          margin-bottom: 16px;
-        }
-
-        .hero-desc {
-          max-width: 680px;
+        .hero-body {
           font-size: 1.05rem;
-          color: var(--text-muted);
-          margin-bottom: 36px;
-          line-height: 1.6;
+          color: var(--text-secondary);
+          line-height: 1.65;
+          max-width: 560px;
         }
 
         .hero-ctas {
           display: flex;
-          gap: 16px;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .hero-cta-primary {
+          padding: 11px 22px;
+          font-size: 0.95rem;
+        }
+
+        /* ── Preview Card ── */
+        .preview-section {
+          width: 100%;
+        }
+
+        .preview-card {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          gap: 0;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+          box-shadow: var(--shadow-md);
+        }
+
+        .preview-editor {
+          display: flex;
+          flex-direction: column;
+          border-right: 1px solid var(--border);
+        }
+
+        .preview-tab-bar {
+          background: #161b22;
+          border-bottom: 1px solid var(--border);
+          padding: 0 16px;
+          display: flex;
+        }
+
+        .preview-tab {
+          display: inline-flex;
+          padding: 10px 0;
+          font-size: 0.78rem;
+          font-family: var(--font-mono);
+          color: var(--text-secondary);
+          border-bottom: 2px solid transparent;
+        }
+
+        .preview-tab.active {
+          color: var(--text-primary);
+          border-bottom-color: var(--accent);
+        }
+
+        .preview-code {
+          padding: 20px;
+          font-family: var(--font-mono);
+          font-size: 0.82rem;
+          color: #c9d1d9;
+          line-height: 1.7;
+          background: var(--bg-input);
+          flex: 1;
+          margin: 0;
+          overflow-x: auto;
+        }
+
+        .preview-arrow {
+          display: flex;
+          align-items: center;
           justify-content: center;
+          padding: 0 16px;
+          color: var(--text-tertiary);
+          background: var(--bg-surface);
+        }
+
+        .preview-result {
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .preview-status-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          width: fit-content;
+        }
+
+        .preview-status-badge.red {
+          background: var(--status-red-bg);
+          border: 1px solid var(--status-red-border);
+          color: #f87171;
+        }
+
+        .preview-result-section {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .preview-label {
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text-tertiary);
+        }
+
+        .preview-result-section p {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+
+        .preview-fix-code {
+          font-family: var(--font-mono);
+          font-size: 0.8rem;
+          color: #79c0ff;
+          background: rgba(121, 192, 255, 0.05);
+          border: 1px solid rgba(121, 192, 255, 0.12);
+          border-radius: 5px;
+          padding: 8px 10px;
+          margin: 0;
+        }
+
+        /* ── Feature Strip ── */
+        .features-section {
+          padding-bottom: 8px;
+        }
+
+        .features-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1px;
+          background: var(--border);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+        }
+
+        .feature-item {
+          background: var(--bg-surface);
+          padding: 28px 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          transition: background 0.15s;
+        }
+
+        .feature-item:hover {
+          background: var(--bg-elevated);
+        }
+
+        .feature-icon-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 9px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          margin-bottom: 2px;
+        }
+
+        .feature-icon-wrap.accent {
+          background: var(--accent-subtle);
+          border-color: var(--accent-border);
+          color: var(--accent);
+        }
+
+        .feature-title {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          font-family: var(--font-heading);
+        }
+
+        .feature-desc {
+          font-size: 0.88rem;
+          color: var(--text-secondary);
+          line-height: 1.55;
+          flex: 1;
+        }
+
+        .feature-cta {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: none;
+          border: none;
+          color: var(--accent);
+          font-size: 0.82rem;
+          font-weight: 600;
+          font-family: var(--font-sans);
+          cursor: pointer;
+          padding: 0;
+          margin-top: 4px;
+          transition: gap 0.15s;
+        }
+
+        .feature-cta:hover { gap: 10px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+          .preview-card {
+            grid-template-columns: 1fr;
+          }
+          .preview-editor {
+            border-right: none;
+            border-bottom: 1px solid var(--border);
+          }
+          .preview-arrow {
+            display: none;
+          }
+          .features-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 640px) {
-          .hero-title {
-            font-size: 2.5rem;
+          .hero {
+            padding-top: 32px;
           }
           .hero-ctas {
             flex-direction: column;
             width: 100%;
-            max-width: 280px;
           }
-        }
-
-        /* Features Section */
-        .section-title {
-          font-size: 1.8rem;
-          font-family: var(--font-heading);
-          font-weight: 700;
-          margin-bottom: 24px;
-        }
-
-        .feature-card {
-          padding: 32px;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          text-align: left;
-        }
-
-        .feature-icon-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 56px;
-          height: 56px;
-          border-radius: 14px;
-          margin-bottom: 20px;
-        }
-
-        .blue-glow {
-          background: rgba(59, 130, 246, 0.1);
-          border: 1px solid rgba(59, 130, 246, 0.25);
-          color: var(--primary);
-        }
-
-        .purple-glow {
-          background: rgba(139, 92, 246, 0.1);
-          border: 1px solid rgba(139, 92, 246, 0.25);
-          color: var(--secondary);
-        }
-
-        .feature-card-title {
-          font-size: 1.25rem;
-          margin-bottom: 8px;
-        }
-
-        .feature-card-desc {
-          color: var(--text-muted);
-          font-size: 0.95rem;
-          margin-bottom: 24px;
-          line-height: 1.5;
-        }
-
-        .feature-card-link {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: var(--text-main);
-          margin-top: auto;
-          transition: var(--transition-fast);
-        }
-
-        .feature-card:hover .feature-card-link {
-          gap: 10px;
-          color: var(--primary);
-        }
-
-        /* Topics Section */
-        .section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          margin-bottom: 24px;
-        }
-
-        .section-subtitle {
-          color: var(--text-muted);
-          font-size: 0.95rem;
-        }
-
-        .btn-sm {
-          padding: 8px 16px;
-          font-size: 0.85rem;
-        }
-
-        .topics-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          gap: 16px;
-        }
-
-        @media (max-width: 640px) {
-          .section-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
-          }
-          .topics-grid {
-            grid-template-columns: 1fr;
+          .hero-ctas .btn {
+            width: 100%;
+            justify-content: center;
           }
         }
       `}</style>
