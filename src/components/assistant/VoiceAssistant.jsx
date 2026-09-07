@@ -17,6 +17,7 @@ export default function VoiceAssistant() {
   const [isMuted, setIsMuted] = useState(false);
   const [autoSpeak] = useState(true);
   const [isHandsFree, setIsHandsFree] = useState(() => {
+    if (typeof window !== 'undefined' && window.desktopAssistant?.isDesktop) return true;
     try { return localStorage.getItem('assistant_handsfree') === 'true'; } catch { return false; }
   });
   const [errorMessage, setErrorMessage] = useState('');
@@ -72,6 +73,7 @@ export default function VoiceAssistant() {
     voiceService.startHandsFreeMode({
       onWake: (queryAfterWake) => {
         playWakeChime();
+        if (isDesktop) window.desktopAssistant?.show?.();
         setIsOpen(true);
         if (queryAfterWake?.trim()) handleSendMessage(queryAfterWake.trim());
         else handleToggleListen();
@@ -84,7 +86,7 @@ export default function VoiceAssistant() {
         setErrorMessage(err);
       }
     });
-  }, [playWakeChime]);
+  }, [playWakeChime, isDesktop]);
 
   const handleSendMessage = useCallback(async (queryText = '') => {
     const promptToSend = queryText.trim();
@@ -95,8 +97,6 @@ export default function VoiceAssistant() {
     setErrorMessage('');
     setState('analyzing');
 
-    // In the Electron desktop shell, every assistant turn gets a fresh one-shot
-    // screenshot automatically. The browser version remains explicit-permission only.
     let attachedScreenshot = screenshot;
     if (isDesktop && !attachedScreenshot) {
       try {
@@ -202,8 +202,7 @@ export default function VoiceAssistant() {
     if (isHandsFree && voiceService.isSupported()) restartHandsFree();
   }, [isHandsFree, restartHandsFree]);
 
-  // Electron global shortcut activation: Alt+Shift+A works even when another
-  // application owns focus. It brings up the HUD and starts a one-shot command.
+  // Electron global shortcut activation: works even when another application owns focus.
   useEffect(() => {
     if (!isDesktop || !window.desktopAssistant?.onActivate) return undefined;
     return window.desktopAssistant.onActivate(() => {
@@ -259,7 +258,15 @@ export default function VoiceAssistant() {
         isMuted={isMuted}
         isHandsFree={isHandsFree}
         errorMessage={errorMessage}
-        onClose={() => { setIsOpen(false); speechService.stop(); if (!isHandsFreeRef.current) voiceService.stopListening(); else restartHandsFree(); }}
+        onClose={() => {
+          setIsOpen(false);
+          speechService.stop();
+          voiceService.stopListening({ preserveHandsFree: true });
+          if (isDesktop) {
+            window.desktopAssistant?.hide?.();
+            if (isHandsFreeRef.current) setTimeout(() => restartHandsFree(), 0);
+          }
+        }}
         onToggleListen={handleToggleListen}
         onToggleHandsFree={handleToggleHandsFree}
         onCaptureScreen={handleCaptureScreen}
@@ -271,7 +278,10 @@ export default function VoiceAssistant() {
         onReplaySpeech={handleReplaySpeech}
         onDismissError={() => setErrorMessage('')}
       />
-      <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => setIsOpen(true)} />
+      <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => {
+        setIsOpen(true);
+        if (isDesktop) window.desktopAssistant?.show?.();
+      }} />
     </div>
   );
 }
