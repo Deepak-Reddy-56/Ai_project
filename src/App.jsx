@@ -14,25 +14,12 @@ class ErrorBoundary extends Component {
     super(props);
     this.state = { hasError: false, error: null };
   }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error('App error caught by ErrorBoundary:', error, errorInfo);
-  }
-
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) { console.error('App error caught by ErrorBoundary:', error, errorInfo); }
   handleReset = () => {
-    try {
-      localStorage.clear();
-      window.location.hash = 'home';
-      window.location.reload();
-    } catch {
-      window.location.reload();
-    }
+    try { localStorage.clear(); window.location.hash = 'home'; window.location.reload(); }
+    catch { window.location.reload(); }
   };
-
   render() {
     if (this.state.hasError) {
       return (
@@ -49,16 +36,17 @@ class ErrorBoundary extends Component {
   }
 }
 
+function DesktopAssistantShell() {
+  return <ErrorBoundary><VoiceAssistant /></ErrorBoundary>;
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedTopicId, setSelectedTopicId] = useState('python-1');
-  const isDesktopAssistant = typeof window !== 'undefined' && window.desktopAssistant?.isDesktop && window.location.hash === '#assistant';
-
-  if (isDesktopAssistant) {
-    return <ErrorBoundary><VoiceAssistant /></ErrorBoundary>;
-  }
+  const [isDesktopAssistant] = useState(() => typeof window !== 'undefined' && window.desktopAssistant?.isDesktop && window.location.hash === '#assistant');
 
   useEffect(() => {
+    if (isDesktopAssistant) return undefined;
     const handleHashChange = () => {
       try {
         const hash = window.location.hash.replace('#', '');
@@ -72,16 +60,14 @@ export default function App() {
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [isDesktopAssistant]);
 
   const handlePageChange = (pageId) => {
-    try {
-      setCurrentPage(pageId);
-      window.location.hash = pageId;
-    } catch (err) {
-      console.warn('Page change warning:', err);
-    }
+    try { setCurrentPage(pageId); window.location.hash = pageId; }
+    catch (err) { console.warn('Page change warning:', err); }
   };
+
+  if (isDesktopAssistant) return <DesktopAssistantShell />;
 
   const renderPage = () => {
     switch (currentPage) {
