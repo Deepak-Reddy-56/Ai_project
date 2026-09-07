@@ -58,71 +58,103 @@ Learning to program can be intimidating. Beginners often struggle with:
 
 ---
 
-## 5. Technology Stack
+## 5. Context-Aware Voice Assistant
+
+A globally mounted, multimodal AI assistant capable of seeing what is on your screen and hearing your voice.
+
+### Key Capabilities:
+- **One-Click Voice Input**: Speech-to-Text using standard Web Speech API with real-time audio visualization and transcription preview.
+- **On-Demand Screen Context**: One-click screen frame capture via `getDisplayMedia`. Frames are resized and compressed client-side to lightweight JPEG data before sending.
+- **Generic DOM & Text Context**: Captures page title, current URL, active text selection, and sanitized DOM text excerpts across any page or window.
+- **Gemini Multimodal Reasoning**: Powered by Google's Gemini models (e.g. `gemini-3.6-flash`), distinguishing observed facts from deductions without hallucinating bugs.
+- **Text-to-Speech Output**: Integrated speech synthesis that reads out natural, conversational summaries alongside rich visual markdown with code copying.
+- **Privacy First**: Screen sharing stream terminates immediately after single frame acquisition. No audio or video is stored on disk or server.
+
+---
+
+## 6. Technology Stack
 
 - **Core Library**: React (v19)
 - **Scaffolding/Bundle**: Vite (v8)
-- **Styling**: Custom Vanilla CSS (Dark theme glassmorphism, responsive CSS grid/flexbox)
+- **Styling**: Custom Vanilla CSS (Dark theme editorial system, responsive CSS grid/flexbox)
 - **Icons**: Lucide React Icons
-- **Mock engine**: Client-side keyword parser and regex check functions
+- **Backend**: Node.js / Express
+- **AI Integration**: Google GenAI SDK (`@google/genai`) with Gemini multimodal support
+- **Browser APIs**: Web Speech API (`webkitSpeechRecognition`), Web Speech Synthesis (`speechSynthesis`), Screen Capture API (`getDisplayMedia`)
 
 ---
 
-## 6. System Workflow
-
-The following diagram illustrates how user requests move through the application:
+## 7. System Architecture
 
 ```text
-       User (Enters code/question)
-                 ↓
-      Frontend User Interface (Validates, triggers loading state)
-                 ↓
-      Assistant Processing (Parses input keywords, runs syntax regex checks)
-                 ↓
-   Explanation & Debugging Guidance (Generates output, renders syntax block)
-                 ↓
-                 User (Learns, modifies code, copies examples)
+User Speech / Mic Click
+          ↓
+Speech-to-Text (voiceService)
+          ↓
+Context Acquisition (contextService)
+[Single-frame compressed screenshot + selected text + DOM excerpt + title]
+          ↓
+Backend Multimodal API (/api/assistant)
+          ↓
+Gemini Reasoning & System Prompt (assistantPrompt.js)
+          ↓
+Structured Output ({ response: Markdown, spokenText: String })
+          ↓
+Floating Assistant Panel (VoiceAssistant.jsx)
+          ↓
+Text-to-Speech (speechService)
 ```
-
----
-
-## 7. Future Scope
-
-To expand this prototype into a full-scale educational product, we plan to implement:
-1. **Real LLM Integration**: Connecting to Google Gemini API for unlimited, dynamic coding guidance.
-2. **Code Sandbox Execution**: Enabling users to run their Python or JavaScript code directly inside the browser.
-3. **Multi-Language Support**: Expanding concept sheets and code highlight presets to C++, Java, Rust, and SQL.
-4. **Interactive Practice Quizzes**: Adding mini-challenges at the end of topics to test comprehension.
-5. **Personalized Learning Paths**: Assessing user progress and recommending topics dynamically.
-6. **Voice Commands**: Allowing voice-based coding queries for accessibility.
-7. **Code Visualizer**: Rendering execution stacks visually (e.g. tracking recursive calls in real-time).
 
 ---
 
 ## 8. Instructions to Run Locally
 
-Follow these steps to run the application on your computer:
-
 ### Prerequisites
-Make sure you have [Node.js](https://nodejs.org/) installed (version 18 or above recommended).
+- [Node.js](https://nodejs.org/) (version 18 or above recommended).
+- A valid Google Gemini API key.
 
-### Installation
-1. Open a terminal inside the project directory.
-2. Install all dependencies:
-   ```bash
-   npm install
+### Configuration
+1. Create a `server/.env` file (or configure `.env` in the root directory):
+   ```env
+   PORT=5000
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_MODEL=gemini-3.6-flash
    ```
 
-### Running in Development Mode
-Start the local development server:
+### Installation
+Install dependencies for both frontend and backend:
 ```bash
-npm run dev
+npm install
+cd server && npm install && cd ..
 ```
-Once started, the terminal will display a local address (typically `http://localhost:5173`). Open this URL in your web browser.
 
-### Building for Production
-To generate a optimized build folder:
-```bash
-npm run build
-```
-The compiled static assets will be output to the `/dist` directory.
+### Running the Application
+1. **Start the Express backend server:**
+   ```bash
+   npm run server
+   ```
+   The backend will start at `http://localhost:5000`.
+
+2. **Start the Vite frontend development server:**
+   ```bash
+   npm run dev
+   ```
+   Open `http://localhost:5173/` in your browser.
+
+### Using the Voice Assistant
+- Click the floating **Voice Assistant** button in the bottom-right corner to open the assistant.
+- Click the **Microphone** icon for one-click voice recognition. Speak your query and the assistant will automatically process it.
+- Click the **Monitor** icon to capture a frame from your screen, a specific window, or another browser tab.
+- Click **Listen** on any assistant reply to replay the spoken audio.
+- Click the **Mute/Unmute** icon in the header to toggle automatic voice playback.
+
+### Browser Compatibility & Limitations
+- **Speech Recognition**: The Web Speech API is natively supported in Google Chrome, Microsoft Edge, and Chromium-based browsers. Firefox and Safari require manual typing fallback.
+- **Screen Capture**: Supported on desktop browsers. Captures a single frame per user click.
+
+---
+
+## 9. Future Desktop & Extension Direction
+- **Browser Extension**: Injecting the assistant directly into any active web tab without requiring localhost hosting.
+- **Electron Desktop Companion**: Global OS-level keyboard shortcut (e.g. `Cmd+Shift+Space`) and system-wide audio capture for coding inside VS Code, terminal windows, and local PDFs.
+

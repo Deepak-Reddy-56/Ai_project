@@ -5,9 +5,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { GEMINI_MODEL, SYSTEM_INSTRUCTION, buildPrompt } from './tutorPrompt.js';
+import { ASSISTANT_SYSTEM_INSTRUCTION, buildAssistantContents, parseAssistantOutput } from './assistantPrompt.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
 const app = express();
@@ -19,7 +21,7 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 // Initialize Google GenAI client
 const apiKey = process.env.GEMINI_API_KEY;
@@ -152,6 +154,93 @@ app.post('/api/ai', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'An error occurred while communicating with the Gemini API.'
+    });
+  }
+});
+
+/**
+ * Context-Aware Multimodal Assistant Endpoint
+ * POST /api/assistant
+ */
+app.post('/api/assistant', async (req, res) => {
+  try {
+    console.log('[Assistant] Request received');
+    const {
+      prompt = '',
+      screenshot = null,
+      context = {},
+      history = []
+    } = req.body;
+
+    const currentKey = process.env.GEMINI_API_KEY;
+    if (!currentKey || currentKey === 'YOUR_GEMINI_API_KEY') {
+      return res.status(400).json({
+        success: false,
+        error: 'Gemini API key is missing or not set. Please provide a valid key in server/.env.'
+      });
+    }
+
+    if (!aiClient) {
+      aiClient = new GoogleGenAI({ apiKey: currentKey });
+    }
+
+    if (!prompt.trim() && !screenshot && (!context || !context.selectedText)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a question, selected text, or screen capture.'
+      });
+    }
+
+    const activeModel = process.env.GEMINI_MODEL || GEMINI_MODEL || 'gemini-2.5-flash';
+    console.log(`[Assistant] Model: ${activeModel} | Has Screenshot: ${Boolean(screenshot)} | Has Selection: ${Boolean(context?.selectedText)}`);
+
+    const contents = buildAssistantContents({ prompt, screenshot, context, history });
+    let outputText = '';
+
+    try {
+      const response = await aiClient.models.generateContent({
+        model: activeModel,
+        contents,
+        config: {
+          systemInstruction: ASSISTANT_SYSTEM_INSTRUCTION
+        }
+      });
+      outputText = response.text;
+    } catch (apiError) {
+      console.warn('⚠️ Primary model generateContent failed in assistant endpoint:', apiError.message);
+      if (activeModel !== 'gemini-3.6-flash') {
+        console.log('🔄 Attempting fallback to gemini-3.6-flash...');
+        const fallbackResponse = await aiClient.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents,
+          config: {
+            systemInstruction: ASSISTANT_SYSTEM_INSTRUCTION
+          }
+        });
+        outputText = fallbackResponse.text;
+      } else {
+        throw apiError;
+      }
+    }
+
+    if (!outputText) {
+      throw new Error('Received empty response from Gemini assistant.');
+    }
+
+    const { response: markdownResponse, spokenText } = parseAssistantOutput(outputText);
+
+    console.log('[Assistant] Request completed successfully');
+    return res.json({
+      success: true,
+      response: markdownResponse,
+      spokenText,
+      model: activeModel
+    });
+  } catch (error) {
+    console.error(`[Assistant] Request failed: ${error.message || error}`);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'An error occurred while processing assistant request.'
     });
   }
 });

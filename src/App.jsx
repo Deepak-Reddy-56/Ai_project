@@ -6,6 +6,7 @@ import Chat from './pages/Chat';
 import CodeExplainer from './pages/CodeExplainer';
 import Topics from './pages/Topics';
 import About from './pages/About';
+import VoiceAssistant from './components/assistant/VoiceAssistant';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -147,6 +148,7 @@ export default function App() {
           {renderPage()}
         </main>
         <Footer setCurrentPage={handlePageChange} />
+        <VoiceAssistant />
       </div>
     </ErrorBoundary>
   );
