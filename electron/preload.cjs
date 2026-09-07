@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktopAssistant', {
   isDesktop: true,
   captureScreen: () => ipcRenderer.invoke('desktop-assistant:capture-screen'),
+  show: () => ipcRenderer.send('desktop-assistant:show'),
   hide: () => ipcRenderer.send('desktop-assistant:hide'),
   startVoice: () => ipcRenderer.invoke('desktop-assistant:start-voice'),
   stopVoice: () => ipcRenderer.send('desktop-assistant:stop-voice'),
