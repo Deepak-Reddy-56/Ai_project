@@ -10,7 +10,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "desktop": "electron electron/main.cjs"
+    "desktop": "node electron/run.cjs"
   },
   "dependencies": {
     "lucide-react": "^1.33.0",
