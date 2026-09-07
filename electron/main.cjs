@@ -19,6 +19,7 @@ let assistantWindow;
 let registeredAccelerator = null;
 let speechProcess = null;
 let speechReady = false;
+let speechStarting = false;
 
 const isDev = !app.isPackaged;
 const rendererUrl = process.env.ASSISTANT_RENDERER_URL || 'http://localhost:5173';
@@ -113,14 +114,19 @@ function registerShortcuts() {
 }
 
 function sendSpeechEvent(payload) {
+  console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
   if (!assistantWindow || assistantWindow.isDestroyed()) return;
   assistantWindow.webContents.send('desktop-assistant:speech-event', payload);
 }
 
 function sendPythonCommand(command) {
-  if (!speechProcess || speechProcess.killed || !speechProcess.stdin?.writable) return false;
+  if (!speechProcess || speechProcess.killed || !speechProcess.stdin?.writable) {
+    console.warn(`[DesktopAssistant] Cannot send Python command: ${command}; worker is not running.`);
+    return false;
+  }
   try {
     speechProcess.stdin.write(`${JSON.stringify({ command })}\n`);
+    console.log(`[DesktopAssistant] Python command sent: ${command}`);
     return true;
   } catch (err) {
     console.warn('[DesktopAssistant] Failed to control Python STT:', err.message);
@@ -130,13 +136,7 @@ function sendPythonCommand(command) {
 
 function stopNativeSpeech() {
   if (!speechProcess) return;
-  if (speechReady) {
-    sendPythonCommand('stop');
-    return;
-  }
-  try { speechProcess.kill(); } catch { /* ignore */ }
-  speechProcess = null;
-  speechReady = false;
+  sendPythonCommand('stop');
 }
 
 function startNativeSpeech() {
@@ -150,9 +150,8 @@ function startNativeSpeech() {
     return false;
   }
 
-  if (speechProcess && speechReady) {
-    return sendPythonCommand('start');
-  }
+  if (speechProcess && speechReady) return sendPythonCommand('start');
+  if (speechStarting) return true;
 
   if (speechProcess) {
     try { speechProcess.kill(); } catch { /* ignore */ }
@@ -160,17 +159,21 @@ function startNativeSpeech() {
     speechReady = false;
   }
 
+  speechStarting = true;
+  console.log(`[DesktopAssistant] Starting Python STT: ${pythonExecutable} -u ${speechScript}`);
+
   speechProcess = spawn(pythonExecutable, ['-u', speechScript], {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
   });
 
   let stdoutBuffer = '';
   speechProcess.stdout.on('data', (chunk) => {
-    stdoutBuffer += chunk.toString();
+    stdoutBuffer += chunk.toString('utf8');
     const lines = stdoutBuffer.split(/\r?\n/);
     stdoutBuffer = lines.pop() || '';
+
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -178,6 +181,7 @@ function startNativeSpeech() {
         const payload = JSON.parse(trimmed);
         if (payload.type === 'ready') {
           speechReady = true;
+          speechStarting = false;
           sendSpeechEvent(payload);
           sendPythonCommand('start');
         } else {
@@ -190,23 +194,27 @@ function startNativeSpeech() {
   });
 
   speechProcess.stderr.on('data', (chunk) => {
-    const text = chunk.toString().trim();
-    if (text) console.warn('[DesktopAssistant] Python STT:', text);
+    const text = chunk.toString('utf8').trim();
+    if (text) console.warn('[DesktopAssistant] Python STT stderr:', text);
+  });
+
+  speechProcess.on('spawn', () => {
+    console.log(`[DesktopAssistant] Python STT process spawned (pid ${speechProcess.pid}).`);
   });
 
   speechProcess.on('error', (err) => {
+    speechStarting = false;
     speechProcess = null;
     speechReady = false;
-    sendSpeechEvent({
-      type: 'error',
-      message: `Python Whisper could not start: ${err.message}. Install the desktop speech dependencies first.`
-    });
+    sendSpeechEvent({ type: 'error', message: `Python Whisper could not start: ${err.message}` });
   });
 
-  speechProcess.on('exit', (code) => {
+  speechProcess.on('exit', (code, signal) => {
+    console.log(`[DesktopAssistant] Python STT exited: code=${code} signal=${signal || 'none'}`);
     speechProcess = null;
     speechReady = false;
-    sendSpeechEvent({ type: 'end', code });
+    speechStarting = false;
+    sendSpeechEvent({ type: 'end', code, signal });
   });
 
   return true;
@@ -234,6 +242,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('desktop-assistant:start-voice', () => startNativeSpeech());
   ipcMain.on('desktop-assistant:stop-voice', stopNativeSpeech);
+
+  // Keep one persistent Python worker alive so opening/listening does not race
+  // against Python startup or Whisper model loading.
+  startNativeSpeech();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindows();
