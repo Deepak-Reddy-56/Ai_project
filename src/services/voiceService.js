@@ -1,17 +1,23 @@
 /**
  * Voice Service: Speech-to-Text abstraction using Web Speech API
- * Supports one-click microphone activation, interim results, and optional wake phrase detection.
+ * Supports one-click microphone activation, continuous background wake phrase detection ("Hey Assistant"),
+ * and automatic session recovery.
  */
 
 const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
+const DEFAULT_WAKE_PHRASES = ['hey assistant', 'ok assistant', 'assistant', 'hello assistant'];
+
 class VoiceService {
   constructor() {
     this.recognition = null;
     this.isListening = false;
-    this.wakePhrase = 'hey assistant';
+    this.isHandsFreeActive = false;
+    this.wakePhrases = DEFAULT_WAKE_PHRASES;
+    this.activeCallbacks = null;
+    this.shouldRestartHandsFree = false;
   }
 
   isSupported() {
@@ -19,17 +25,7 @@ class VoiceService {
   }
 
   /**
-   * Starts listening for speech input
-   * 
-   * @param {Object} options
-   * @param {Function} options.onTranscript - Callback for finalized transcript
-   * @param {Function} [options.onInterim] - Callback for interim/in-progress transcript
-   * @param {Function} [options.onError] - Error callback with user-friendly message
-   * @param {Function} [options.onEnd] - Recognition ended callback
-   * @param {Function} [options.onWakePhrase] - Triggered when wake phrase is detected
-   * @param {boolean} [options.continuous=false] - Continuous listening mode
-   * @param {string} [options.lang='en-US'] - Speech recognition language
-   * @param {string} [options.wakePhrase] - Custom wake phrase to listen for
+   * Starts speech recognition session
    */
   startListening({
     onTranscript,
@@ -39,22 +35,23 @@ class VoiceService {
     onWakePhrase,
     continuous = false,
     lang = 'en-US',
-    wakePhrase = 'hey assistant'
+    wakePhrases = DEFAULT_WAKE_PHRASES
   } = {}) {
     if (!this.isSupported()) {
-      if (onError) onError('Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
+      if (onError) onError('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
 
-    // Stop any existing session
     this.stopListening();
+
+    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase };
+    this.wakePhrases = wakePhrases;
 
     try {
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = continuous;
       this.recognition.interimResults = true;
       this.recognition.lang = lang;
-      this.wakePhrase = (wakePhrase || 'hey assistant').toLowerCase().trim();
 
       let finalTranscript = '';
 
@@ -74,14 +71,25 @@ class VoiceService {
           }
         }
 
-        const currentCombined = (finalTranscript + interimTranscript).trim();
+        const currentCombined = (finalTranscript + interimTranscript).trim().toLowerCase();
 
-        // Optional wake-phrase check
-        if (this.wakePhrase && currentCombined.toLowerCase().includes(this.wakePhrase)) {
-          if (onWakePhrase) {
-            const stripped = currentCombined.replace(new RegExp(this.wakePhrase, 'gi'), '').trim();
-            onWakePhrase(stripped);
+        // Check for wake phrase matches
+        let matchedPhrase = null;
+        for (const phrase of this.wakePhrases) {
+          if (currentCombined.includes(phrase)) {
+            matchedPhrase = phrase;
+            break;
           }
+        }
+
+        if (matchedPhrase && onWakePhrase) {
+          // Extract text following the wake phrase
+          const phraseIndex = currentCombined.indexOf(matchedPhrase);
+          const rawAfterWake = (finalTranscript + interimTranscript).slice(phraseIndex + matchedPhrase.length).trim();
+          onWakePhrase(rawAfterWake);
+          // Reset buffer
+          finalTranscript = '';
+          return;
         }
 
         if (onInterim && interimTranscript) {
@@ -94,28 +102,16 @@ class VoiceService {
       };
 
       this.recognition.onerror = (event) => {
-        console.warn('[VoiceService] Recognition error:', event.error);
-        let errorMsg = 'An error occurred during voice recognition.';
+        console.warn('[VoiceService] SpeechRecognition error:', event.error);
+        if (event.error === 'aborted' || event.error === 'no-speech') {
+          // Benign errors in continuous/background mode
+          return;
+        }
 
-        switch (event.error) {
-          case 'not-allowed':
-          case 'permission-denied':
-            errorMsg = 'Microphone permission denied. Please allow microphone access in your browser settings.';
-            break;
-          case 'no-speech':
-            errorMsg = 'No speech was detected. Click the microphone to try again.';
-            break;
-          case 'audio-capture':
-            errorMsg = 'No microphone device was detected.';
-            break;
-          case 'network':
-            errorMsg = 'Network error during speech recognition.';
-            break;
-          case 'aborted':
-            // Normal abort when user stops manually, don't trigger alarm
-            return;
-          default:
-            errorMsg = `Voice recognition error: ${event.error}`;
+        let errorMsg = `Voice recognition error: ${event.error}`;
+        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+          errorMsg = 'Microphone permission denied. Please allow microphone access in your browser.';
+          this.shouldRestartHandsFree = false;
         }
 
         if (onError) onError(errorMsg);
@@ -123,13 +119,27 @@ class VoiceService {
 
       this.recognition.onend = () => {
         this.isListening = false;
-        if (onEnd) onEnd();
+
+        // In continuous hands-free mode, seamlessly restart if it ended naturally
+        if (this.shouldRestartHandsFree && this.activeCallbacks) {
+          setTimeout(() => {
+            if (this.shouldRestartHandsFree) {
+              this.startListening({
+                ...this.activeCallbacks,
+                continuous: true,
+                wakePhrases: this.wakePhrases
+              });
+            }
+          }, 300);
+        } else if (onEnd) {
+          onEnd();
+        }
       };
 
       this.recognition.start();
       return true;
     } catch (err) {
-      console.error('[VoiceService] Failed to start speech recognition:', err);
+      console.error('[VoiceService] Failed to start recognition:', err);
       this.isListening = false;
       if (onError) onError(err.message || 'Failed to start microphone.');
       return false;
@@ -137,14 +147,44 @@ class VoiceService {
   }
 
   /**
-   * Stops listening
+   * Enables continuous background listening for "Hey Assistant" wake phrase
+   */
+  startHandsFreeMode({ onWake, onInterim, onError }) {
+    this.shouldRestartHandsFree = true;
+    this.isHandsFreeActive = true;
+
+    return this.startListening({
+      continuous: true,
+      onWakePhrase: (queryAfterWake) => {
+        if (onWake) onWake(queryAfterWake);
+      },
+      onInterim: (interim) => {
+        if (onInterim) onInterim(interim);
+      },
+      onError: (err) => {
+        if (onError) onError(err);
+      }
+    });
+  }
+
+  /**
+   * Disables hands-free background listening
+   */
+  stopHandsFreeMode() {
+    this.shouldRestartHandsFree = false;
+    this.isHandsFreeActive = false;
+    this.stopListening();
+  }
+
+  /**
+   * Stops any ongoing recognition
    */
   stopListening() {
     if (this.recognition) {
       try {
         this.recognition.abort();
       } catch {
-        // Ignore errors on abort
+        // ignore
       }
       this.recognition = null;
     }

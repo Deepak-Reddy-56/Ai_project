@@ -16,10 +16,18 @@ export default function VoiceAssistant() {
   const [interimTranscript, setInterimTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [autoSpeak] = useState(true);
+  const [isHandsFree, setIsHandsFree] = useState(() => {
+    try {
+      return localStorage.getItem('assistant_handsfree') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [errorMessage, setErrorMessage] = useState('');
 
   const messagesRef = useRef(messages);
   const stateRef = useRef(state);
+  const isHandsFreeRef = useRef(isHandsFree);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -29,7 +37,38 @@ export default function VoiceAssistant() {
     stateRef.current = state;
   }, [state]);
 
-  // Track selection changes across the page when assistant is open
+  useEffect(() => {
+    isHandsFreeRef.current = isHandsFree;
+    try {
+      localStorage.setItem('assistant_handsfree', String(isHandsFree));
+    } catch {
+      // ignore
+    }
+  }, [isHandsFree]);
+
+  // Audio chime when wake phrase is detected
+  const playWakeChime = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    } catch {
+      // AudioContext might be restricted until user interaction
+    }
+  }, []);
+
+  // Track selection changes across the page when assistant is mounted
   useEffect(() => {
     const handleMouseUp = () => {
       try {
@@ -63,7 +102,7 @@ export default function VoiceAssistant() {
       return;
     }
 
-    // Stop listening if mic was active
+    // Stop listening while analyzing
     voiceService.stopListening();
     setInterimTranscript('');
     setErrorMessage('');
@@ -86,7 +125,7 @@ export default function VoiceAssistant() {
       pageContext.selectedText = selectedText;
     }
 
-    // Capture current screenshot reference and then clear state to avoid stale attachments
+    // Clear single-use attachments
     const attachedScreenshot = screenshot;
     setScreenshot(null);
     setSelectedText('');
@@ -118,16 +157,23 @@ export default function VoiceAssistant() {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Speak response if autoSpeak is enabled and audio is not muted
+      // Complete speech and resume hands-free listening if enabled
+      const finishTurn = () => {
+        setState('idle');
+        if (isHandsFreeRef.current) {
+          restartHandsFree();
+        }
+      };
+
       if (!isMuted && autoSpeak && result.spokenText) {
         setState('speaking');
         speechService.speak(result.spokenText, {
           onStart: () => setState('speaking'),
-          onEnd: () => setState('idle'),
-          onError: () => setState('idle')
+          onEnd: finishTurn,
+          onError: finishTurn
         });
       } else {
-        setState('idle');
+        finishTurn();
       }
     } catch (err) {
       console.error('[VoiceAssistant] Error:', err);
@@ -141,6 +187,10 @@ export default function VoiceAssistant() {
           text: `⚠️ **Assistant Error:** ${err.message || 'Unable to complete request. Please verify the backend server is running.'}`
         }
       ]);
+
+      if (isHandsFreeRef.current) {
+        restartHandsFree();
+      }
     }
   }, [screenshot, selectedText, isMuted, autoSpeak]);
 
@@ -153,15 +203,16 @@ export default function VoiceAssistant() {
       voiceService.stopListening();
       setState('idle');
       setInterimTranscript('');
+      if (isHandsFreeRef.current) {
+        restartHandsFree();
+      }
       return;
     }
 
-    // If currently speaking, stop speech first
     if (stateRef.current === 'speaking') {
       speechService.stop();
     }
 
-    // Ensure panel is open
     setIsOpen(true);
     setErrorMessage('');
     setState('listening');
@@ -177,6 +228,9 @@ export default function VoiceAssistant() {
           handleSendMessage(finalText.trim());
         } else {
           setState('idle');
+          if (isHandsFreeRef.current) {
+            restartHandsFree();
+          }
         }
       },
       onError: (errMsg) => {
@@ -189,13 +243,6 @@ export default function VoiceAssistant() {
           setState('idle');
           setInterimTranscript('');
         }
-      },
-      // Architectural wake-phrase support
-      wakePhrase: 'hey assistant',
-      onWakePhrase: (queryAfterWake) => {
-        if (queryAfterWake && queryAfterWake.trim()) {
-          handleSendMessage(queryAfterWake.trim());
-        }
       }
     });
 
@@ -203,6 +250,71 @@ export default function VoiceAssistant() {
       setState('idle');
     }
   }, [handleSendMessage]);
+
+  /**
+   * Helper to restart hands-free wake listening
+   */
+  const restartHandsFree = useCallback(() => {
+    if (!isHandsFreeRef.current || !voiceService.isSupported()) return;
+
+    voiceService.startHandsFreeMode({
+      onWake: (queryAfterWake) => {
+        playWakeChime();
+        setIsOpen(true);
+
+        if (queryAfterWake && queryAfterWake.trim()) {
+          // User spoke entire query: "Hey assistant, what is X?"
+          handleSendMessage(queryAfterWake.trim());
+        } else {
+          // User only said "Hey assistant" -> open and activate listening
+          handleToggleListen();
+        }
+      },
+      onInterim: (interim) => {
+        if (stateRef.current === 'listening') {
+          setInterimTranscript(interim);
+        }
+      },
+      onError: (err) => {
+        console.warn('[VoiceAssistant] Hands-free listener notice:', err);
+      }
+    });
+  }, [playWakeChime, handleSendMessage, handleToggleListen]);
+
+  /**
+   * Toggle Hands-Free "Hey Assistant" mode
+   */
+  const handleToggleHandsFree = () => {
+    const nextVal = !isHandsFree;
+    setIsHandsFree(nextVal);
+
+    if (nextVal) {
+      isHandsFreeRef.current = true;
+      restartHandsFree();
+    } else {
+      isHandsFreeRef.current = false;
+      voiceService.stopHandsFreeMode();
+    }
+  };
+
+  // Start hands-free on initial load if user had it enabled
+  useEffect(() => {
+    if (isHandsFree && voiceService.isSupported()) {
+      restartHandsFree();
+    }
+  }, [isHandsFree, restartHandsFree]);
+
+  // Global Keyboard Shortcut: Alt + A activates the assistant from ANY page!
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.altKey && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        handleToggleListen();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleToggleListen]);
 
   /**
    * On-demand Screen Capture
@@ -242,6 +354,9 @@ export default function VoiceAssistant() {
     setSelectedText('');
     setErrorMessage('');
     setState('idle');
+    if (isHandsFreeRef.current) {
+      restartHandsFree();
+    }
   };
 
   const handleReplaySpeech = (text) => {
@@ -250,8 +365,14 @@ export default function VoiceAssistant() {
     setState('speaking');
     speechService.speak(text, {
       onStart: () => setState('speaking'),
-      onEnd: () => setState('idle'),
-      onError: () => setState('idle')
+      onEnd: () => {
+        setState('idle');
+        if (isHandsFreeRef.current) restartHandsFree();
+      },
+      onError: () => {
+        setState('idle');
+        if (isHandsFreeRef.current) restartHandsFree();
+      }
     });
   };
 
@@ -266,13 +387,19 @@ export default function VoiceAssistant() {
         selectedText={selectedText}
         interimTranscript={interimTranscript}
         isMuted={isMuted}
+        isHandsFree={isHandsFree}
         errorMessage={errorMessage}
         onClose={() => {
           setIsOpen(false);
           speechService.stop();
-          voiceService.stopListening();
+          if (!isHandsFreeRef.current) {
+            voiceService.stopListening();
+          } else {
+            restartHandsFree();
+          }
         }}
         onToggleListen={handleToggleListen}
+        onToggleHandsFree={handleToggleHandsFree}
         onCaptureScreen={handleCaptureScreen}
         onRemoveScreenshot={handleRemoveScreenshot}
         onRemoveSelectedText={handleRemoveSelectedText}
@@ -287,6 +414,7 @@ export default function VoiceAssistant() {
       <AssistantTrigger
         isOpen={isOpen}
         state={state}
+        isHandsFree={isHandsFree}
         hasScreenshot={Boolean(screenshot)}
         onClick={() => setIsOpen(true)}
       />
