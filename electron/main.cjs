@@ -1,4 +1,5 @@
 const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen, session } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,16 +7,23 @@ const fs = require('fs');
 // sharing a generic cache location. This avoids cache collisions/lock issues.
 const appDataRoot = path.join(app.getPath('appData'), 'CodeCompanion');
 const sessionDataPath = path.join(appDataRoot, 'session');
+const cachePath = path.join(sessionDataPath, 'cache');
+const codeCachePath = path.join(sessionDataPath, 'code-cache');
+fs.mkdirSync(cachePath, { recursive: true });
+fs.mkdirSync(codeCachePath, { recursive: true });
 fs.mkdirSync(sessionDataPath, { recursive: true });
 app.setPath('userData', appDataRoot);
 app.setPath('sessionData', sessionDataPath);
+app.commandLine.appendSwitch('disk-cache-dir', cachePath);
 
 let mainWindow;
 let assistantWindow;
 let registeredAccelerator = null;
+let speechProcess = null;
 
 const isDev = !app.isPackaged;
 const rendererUrl = process.env.ASSISTANT_RENDERER_URL || 'http://localhost:5173';
+const speechScript = path.join(__dirname, 'windowsSpeech.ps1');
 
 function createWindows() {
   mainWindow = new BrowserWindow({
@@ -90,8 +98,6 @@ function showAssistant() {
 }
 
 function registerShortcuts() {
-  // Try the preferred shortcut first, then fall back to alternatives if Windows
-  // has already reserved the accelerator for another application.
   const candidates = [
     'Control+Alt+Shift+A',
     'Control+Shift+Space',
@@ -113,16 +119,96 @@ function registerShortcuts() {
   console.warn('[DesktopAssistant] No global shortcut could be registered.');
 }
 
-app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(permission === 'media' || permission === 'display-capture');
+function sendSpeechEvent(payload) {
+  if (!assistantWindow || assistantWindow.isDestroyed()) return;
+  assistantWindow.webContents.send('desktop-assistant:speech-event', payload);
+}
+
+function stopNativeSpeech() {
+  if (!speechProcess) return;
+  try { speechProcess.kill(); } catch { /* ignore */ }
+  speechProcess = null;
+}
+
+function startNativeSpeech() {
+  if (process.platform !== 'win32') {
+    sendSpeechEvent({ type: 'error', message: 'Native desktop speech input is currently supported on Windows only.' });
+    return false;
+  }
+
+  if (!fs.existsSync(speechScript)) {
+    sendSpeechEvent({ type: 'error', message: 'Windows speech helper is missing from the Electron build.' });
+    return false;
+  }
+
+  stopNativeSpeech();
+
+  speechProcess = spawn('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', speechScript
+  ], {
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe']
   });
+
+  let stdoutBuffer = '';
+  speechProcess.stdout.on('data', (chunk) => {
+    stdoutBuffer += chunk.toString();
+    const lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        sendSpeechEvent(JSON.parse(trimmed));
+      } catch {
+        console.warn('[DesktopAssistant] Ignoring invalid speech helper output:', trimmed);
+      }
+    }
+  });
+
+  speechProcess.stderr.on('data', (chunk) => {
+    const text = chunk.toString().trim();
+    if (text) console.warn('[DesktopAssistant] Windows speech:', text);
+  });
+
+  speechProcess.on('error', (err) => {
+    speechProcess = null;
+    sendSpeechEvent({ type: 'error', message: `Windows speech could not start: ${err.message}` });
+  });
+
+  speechProcess.on('exit', (code) => {
+    speechProcess = null;
+    sendSpeechEvent({ type: 'end', code });
+  });
+
+  return true;
+}
+
+app.whenReady().then(() => {
+  session.defaultSession.setCodeCachePath(codeCachePath);
+  session.defaultSession.setPermissionCheckHandler(
+    (webContents, permission) => permission === 'media' || permission === 'display-capture'
+  );
+  session.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback) => {
+      callback(permission === 'media' || permission === 'display-capture');
+    }
+  );
 
   createWindows();
   registerShortcuts();
 
   ipcMain.handle('desktop-assistant:capture-screen', captureDesktop);
-  ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
+  ipcMain.on('desktop-assistant:hide', () => {
+    stopNativeSpeech();
+    assistantWindow?.hide();
+  });
+  ipcMain.handle('desktop-assistant:start-voice', () => startNativeSpeech());
+  ipcMain.on('desktop-assistant:stop-voice', stopNativeSpeech);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindows();
@@ -130,6 +216,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  stopNativeSpeech();
   if (registeredAccelerator) globalShortcut.unregister(registeredAccelerator);
   globalShortcut.unregisterAll();
 });
