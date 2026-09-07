@@ -6,7 +6,11 @@ const SpeechRecognition = typeof window !== 'undefined'
 const DEFAULT_WAKE_PHRASES = ['hey assistant', 'okay assistant', 'ok assistant', 'hello assistant'];
 
 function normalize(text) {
-  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function findWakePhrase(text, phrases) {
@@ -15,8 +19,6 @@ function findWakePhrase(text, phrases) {
     const target = normalize(phrase);
     if (target && normalized.includes(target)) return target;
   }
-  // Whisper may occasionally omit "hey"/"okay". Treat a leading assistant as
-  // a wake phrase, but do not trigger on the word in the middle of normal speech.
   if (/^assistant\b/.test(normalized)) return 'assistant';
   return null;
 }
@@ -32,12 +34,9 @@ class VoiceService {
     this.sessionId = 0;
     this.desktopReady = !isDesktop;
     this.desktopWakeBuffer = '';
-    this.nativeUnsubscribe = null;
 
     if (isDesktop && window.desktopAssistant?.onVoiceEvent) {
-      this.nativeUnsubscribe = window.desktopAssistant.onVoiceEvent((payload) => {
-        this.handleNativeVoiceEvent(payload);
-      });
+      window.desktopAssistant.onVoiceEvent((payload) => this.handleNativeVoiceEvent(payload));
     }
   }
 
@@ -57,6 +56,7 @@ class VoiceService {
 
   handleNativeVoiceEvent(payload = {}) {
     const callbacks = this.activeCallbacks;
+
     if (payload.type === 'ready') {
       this.desktopReady = true;
       this.lastError = null;
@@ -71,10 +71,16 @@ class VoiceService {
       return;
     }
 
-    if (payload.type === 'device' || payload.type === 'audio-level' || payload.type === 'listening') return;
+    if (payload.type === 'device') {
+      return;
+    }
 
-    if (payload.type === 'audio-status') {
-      console.warn('[VoiceService] Desktop audio:', payload.message);
+    if (payload.type === 'listening') {
+      this.desktopReady = true;
+      return;
+    }
+
+    if (payload.type === 'audio-level' || payload.type === 'audio-status') {
       return;
     }
 
@@ -83,7 +89,7 @@ class VoiceService {
       if (!text || !callbacks) return;
 
       if (callbacks.onWakePhrase) {
-        this.desktopWakeBuffer = `${this.desktopWakeBuffer} ${text}`.trim().slice(-240);
+        this.desktopWakeBuffer = `${this.desktopWakeBuffer} ${text}`.trim().slice(-320);
         const phrase = findWakePhrase(this.desktopWakeBuffer, this.wakePhrases);
         if (!phrase) return;
 
@@ -99,6 +105,7 @@ class VoiceService {
       callbacks.onInterim?.('');
       callbacks.onTranscript?.(text);
       this.isListening = false;
+      this.activeCallbacks = null;
       return;
     }
 
@@ -150,6 +157,7 @@ class VoiceService {
       } catch (err) {
         this.recognition = null;
         this.isListening = false;
+        this.activeCallbacks = null;
         onError?.(err.message || 'Failed to start local Whisper voice input.');
         return false;
       }
@@ -185,13 +193,9 @@ class VoiceService {
         if (this.sessionId !== currentSession) return;
         const errorType = event?.error || 'unknown';
         this.lastError = errorType;
-        if (errorType === 'network') {
-          onError?.('Chrome speech recognition could not reach its recognition service.');
-        } else if (['not-allowed', 'permission-denied', 'service-not-allowed'].includes(errorType)) {
-          onError?.('Microphone access is blocked. Allow microphone access in Chrome.');
-        } else if (errorType !== 'aborted' && errorType !== 'no-speech') {
-          onError?.(`Voice recognition error: ${errorType}`);
-        }
+        if (errorType === 'network') onError?.('Chrome speech recognition could not reach its recognition service.');
+        else if (['not-allowed', 'permission-denied', 'service-not-allowed'].includes(errorType)) onError?.('Microphone access is blocked. Allow microphone access in Chrome.');
+        else if (errorType !== 'aborted' && errorType !== 'no-speech') onError?.(`Voice recognition error: ${errorType}`);
       };
       recognition.onend = () => {
         if (this.sessionId !== currentSession) return;
@@ -202,6 +206,7 @@ class VoiceService {
       return true;
     } catch (err) {
       this.isListening = false;
+      this.activeCallbacks = null;
       onError?.(err.message || 'Failed to start microphone.');
       return false;
     }
@@ -215,9 +220,6 @@ class VoiceService {
       onWakePhrase: onWake,
       onInterim,
       onError,
-      onEnd: () => {
-        if (this.isHandsFreeActive && !this.lastError) this.startHandsFreeMode({ onWake, onInterim, onError });
-      }
     });
   }
 
@@ -238,6 +240,9 @@ class VoiceService {
 
     if (!isDesktop && recognition) {
       try { recognition.abort(); } catch { /* ignore */ }
+      this.activeCallbacks = null;
+    } else if (!preserveHandsFree) {
+      this.activeCallbacks = null;
     }
   }
 }
