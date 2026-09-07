@@ -3,8 +3,6 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-// Keep Chromium cache/session files in an app-specific local directory instead of
-// sharing a generic cache location. This avoids cache collisions/lock issues.
 const appDataRoot = path.join(app.getPath('appData'), 'CodeCompanion');
 const sessionDataPath = path.join(appDataRoot, 'session');
 const cachePath = path.join(sessionDataPath, 'cache');
@@ -20,6 +18,7 @@ let mainWindow;
 let assistantWindow;
 let registeredAccelerator = null;
 let speechProcess = null;
+let speechReady = false;
 
 const isDev = !app.isPackaged;
 const rendererUrl = process.env.ASSISTANT_RENDERER_URL || 'http://localhost:5173';
@@ -83,7 +82,6 @@ async function captureDesktop() {
     thumbnailSize: { width: 1920, height: 1080 },
     fetchWindowIcons: false
   });
-
   if (!sources.length) throw new Error('No desktop display is available.');
 
   const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -99,12 +97,7 @@ function showAssistant() {
 }
 
 function registerShortcuts() {
-  const candidates = [
-    'Control+Alt+Shift+A',
-    'Control+Shift+Space',
-    'Alt+Shift+A'
-  ];
-
+  const candidates = ['Control+Alt+Shift+A', 'Control+Shift+Space', 'Alt+Shift+A'];
   for (const accelerator of candidates) {
     try {
       if (globalShortcut.register(accelerator, showAssistant)) {
@@ -116,7 +109,6 @@ function registerShortcuts() {
       console.warn(`[DesktopAssistant] Shortcut ${accelerator} failed:`, err.message);
     }
   }
-
   console.warn('[DesktopAssistant] No global shortcut could be registered.');
 }
 
@@ -125,10 +117,26 @@ function sendSpeechEvent(payload) {
   assistantWindow.webContents.send('desktop-assistant:speech-event', payload);
 }
 
+function sendPythonCommand(command) {
+  if (!speechProcess || speechProcess.killed || !speechProcess.stdin?.writable) return false;
+  try {
+    speechProcess.stdin.write(`${JSON.stringify({ command })}\n`);
+    return true;
+  } catch (err) {
+    console.warn('[DesktopAssistant] Failed to control Python STT:', err.message);
+    return false;
+  }
+}
+
 function stopNativeSpeech() {
   if (!speechProcess) return;
+  if (speechReady) {
+    sendPythonCommand('stop');
+    return;
+  }
   try { speechProcess.kill(); } catch { /* ignore */ }
   speechProcess = null;
+  speechReady = false;
 }
 
 function startNativeSpeech() {
@@ -142,11 +150,19 @@ function startNativeSpeech() {
     return false;
   }
 
-  stopNativeSpeech();
+  if (speechProcess && speechReady) {
+    return sendPythonCommand('start');
+  }
+
+  if (speechProcess) {
+    try { speechProcess.kill(); } catch { /* ignore */ }
+    speechProcess = null;
+    speechReady = false;
+  }
 
   speechProcess = spawn(pythonExecutable, ['-u', speechScript], {
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
 
@@ -159,7 +175,14 @@ function startNativeSpeech() {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        sendSpeechEvent(JSON.parse(trimmed));
+        const payload = JSON.parse(trimmed);
+        if (payload.type === 'ready') {
+          speechReady = true;
+          sendSpeechEvent(payload);
+          sendPythonCommand('start');
+        } else {
+          sendSpeechEvent(payload);
+        }
       } catch {
         console.warn('[DesktopAssistant] Ignoring invalid Python STT output:', trimmed);
       }
@@ -173,6 +196,7 @@ function startNativeSpeech() {
 
   speechProcess.on('error', (err) => {
     speechProcess = null;
+    speechReady = false;
     sendSpeechEvent({
       type: 'error',
       message: `Python Whisper could not start: ${err.message}. Install the desktop speech dependencies first.`
@@ -181,6 +205,7 @@ function startNativeSpeech() {
 
   speechProcess.on('exit', (code) => {
     speechProcess = null;
+    speechReady = false;
     sendSpeechEvent({ type: 'end', code });
   });
 
@@ -216,7 +241,9 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
-  stopNativeSpeech();
+  if (speechProcess) {
+    try { speechProcess.kill(); } catch { /* ignore */ }
+  }
   if (registeredAccelerator) globalShortcut.unregister(registeredAccelerator);
   globalShortcut.unregisterAll();
 });
