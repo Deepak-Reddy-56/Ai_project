@@ -1,10 +1,12 @@
 /**
- * Voice Service: Speech-to-Text abstraction using Web Speech API.
- * Supports one-shot microphone input and optional hands-free wake phrase detection.
- * The service deliberately does NOT spin in a retry loop when the browser reports
- * network/permission failures, because repeated restarts can make the UI feel locked.
+ * Voice Service abstraction.
+ *
+ * Browser mode uses the Web Speech API.
+ * Electron desktop mode uses the native Windows SpeechRecognitionEngine bridge,
+ * avoiding Chromium's remote SpeechRecognition service and its network errors.
  */
 
+const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
 const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
@@ -23,10 +25,83 @@ class VoiceService {
     this.restartTimer = null;
     this.lastError = null;
     this.sessionId = 0;
+    this.nativeUnsubscribe = null;
+
+    if (isDesktop && window.desktopAssistant?.onVoiceEvent) {
+      this.nativeUnsubscribe = window.desktopAssistant.onVoiceEvent((payload) => {
+        this.handleNativeVoiceEvent(payload);
+      });
+    }
   }
 
   isSupported() {
-    return Boolean(SpeechRecognition);
+    return isDesktop ? Boolean(window.desktopAssistant?.startVoice) : Boolean(SpeechRecognition);
+  }
+
+  handleNativeVoiceEvent(payload = {}) {
+    const callbacks = this.activeCallbacks;
+    if (!callbacks) return;
+
+    if (payload.type === 'ready') {
+      this.isListening = true;
+      this.lastError = null;
+      return;
+    }
+
+    if (payload.type === 'hypothesis') {
+      if (payload.text) callbacks.onInterim?.(payload.text);
+      return;
+    }
+
+    if (payload.type === 'recognized') {
+      const sourceText = String(payload.text || '').trim();
+      if (!sourceText) return;
+
+      const normalized = sourceText.toLowerCase();
+      let matchedPhrase = null;
+      for (const phrase of this.wakePhrases) {
+        if (normalized.includes(phrase)) {
+          matchedPhrase = phrase;
+          break;
+        }
+      }
+
+      if (matchedPhrase && callbacks.onWakePhrase) {
+        const phraseIndex = normalized.indexOf(matchedPhrase);
+        const rawAfterWake = sourceText.slice(phraseIndex + matchedPhrase.length).trim();
+        this.stopNativeListening();
+        callbacks.onInterim?.('');
+        callbacks.onWakePhrase(rawAfterWake);
+        return;
+      }
+
+      callbacks.onInterim?.('');
+      if (callbacks.onTranscript) callbacks.onTranscript(sourceText);
+
+      // One-shot desktop recognition stops after the first usable phrase.
+      if (!this.isHandsFreeActive) this.stopNativeListening();
+      return;
+    }
+
+    if (payload.type === 'error') {
+      this.lastError = 'native-error';
+      this.isListening = false;
+      this.shouldRestartHandsFree = false;
+      callbacks.onError?.(
+        payload.message ||
+        'Windows speech recognition could not start. Check that a microphone is connected and Windows Speech Recognition is available.'
+      );
+      return;
+    }
+
+    if (payload.type === 'end') {
+      this.isListening = false;
+      if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {
+        this.scheduleHandsFreeRestart();
+        return;
+      }
+      callbacks.onEnd?.();
+    }
   }
 
   startListening({
@@ -40,7 +115,9 @@ class VoiceService {
     wakePhrases = DEFAULT_WAKE_PHRASES
   } = {}) {
     if (!this.isSupported()) {
-      onError?.('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
+      onError?.(isDesktop
+        ? 'Native desktop speech input is unavailable.'
+        : 'Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
 
@@ -49,8 +126,29 @@ class VoiceService {
 
     const currentSession = ++this.sessionId;
     this.lastError = null;
-    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase };
+    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase, continuous, lang };
     this.wakePhrases = wakePhrases;
+
+    if (isDesktop) {
+      try {
+        this.recognition = { native: true, session: currentSession };
+        const started = window.desktopAssistant.startVoice();
+        if (!started) {
+          this.recognition = null;
+          this.isListening = false;
+          onError?.('Windows speech recognition could not start. Check microphone access in Windows Settings.');
+          return false;
+        }
+        this.isListening = true;
+        return true;
+      } catch (err) {
+        this.recognition = null;
+        this.isListening = false;
+        this.shouldRestartHandsFree = false;
+        onError?.(err.message || 'Failed to start Windows speech recognition.');
+        return false;
+      }
+    }
 
     try {
       const recognition = new SpeechRecognition();
@@ -73,11 +171,8 @@ class VoiceService {
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-          } else {
-            interimTranscript += transcript;
-          }
+          if (event.results[i].isFinal) finalTranscript += transcript + ' ';
+          else interimTranscript += transcript;
         }
 
         const sourceText = `${finalTranscript}${interimTranscript}`.trim();
@@ -194,6 +289,14 @@ class VoiceService {
     }
   }
 
+  stopNativeListening() {
+    if (isDesktop && window.desktopAssistant?.stopVoice) {
+      try { window.desktopAssistant.stopVoice(); } catch { /* ignore */ }
+    }
+    this.recognition = null;
+    this.isListening = false;
+  }
+
   stopHandsFreeMode() {
     this.shouldRestartHandsFree = false;
     this.isHandsFreeActive = false;
@@ -202,9 +305,7 @@ class VoiceService {
   }
 
   stopListening({ preserveHandsFree = false } = {}) {
-    if (!preserveHandsFree) {
-      this.shouldRestartHandsFree = false;
-    }
+    if (!preserveHandsFree) this.shouldRestartHandsFree = false;
 
     this.clearRestartTimer();
     this.sessionId += 1;
@@ -213,12 +314,13 @@ class VoiceService {
     this.recognition = null;
     this.isListening = false;
 
+    if (isDesktop && recognition?.native) {
+      try { window.desktopAssistant.stopVoice(); } catch { /* ignore */ }
+      return;
+    }
+
     if (recognition) {
-      try {
-        recognition.abort();
-      } catch {
-        // ignore
-      }
+      try { recognition.abort(); } catch { /* ignore */ }
     }
   }
 }
