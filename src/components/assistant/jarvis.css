@@ -1,0 +1,201 @@
+/* Professional HUD treatment for the global voice assistant. */
+
+.assistant-floating-container {
+  bottom: 22px !important;
+  right: 22px !important;
+  z-index: 10000 !important;
+}
+
+.assistant-trigger-btn {
+  min-width: 178px;
+  height: 48px;
+  padding: 7px 12px 7px 8px !important;
+  gap: 9px !important;
+  border-radius: 14px !important;
+  background: rgba(12, 18, 28, 0.94) !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(37, 99, 235, 0.08) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.assistant-trigger-btn:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42), 0 0 24px rgba(37, 99, 235, 0.12) !important;
+}
+
+.assistant-trigger-btn.is-open {
+  opacity: 0.72;
+}
+
+.trigger-signal {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 14px 0 0 14px;
+  background: transparent;
+}
+
+.assistant-trigger-btn.hands-free .trigger-signal {
+  background: #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.65);
+}
+
+.trigger-icon-wrap {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 10px !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #93c5fd !important;
+  border: 1px solid rgba(96, 165, 250, 0.12);
+}
+
+.assistant-trigger-btn.is-listening .trigger-icon-wrap {
+  background: #2563eb !important;
+  color: #fff !important;
+}
+
+.assistant-trigger-btn.is-analyzing,
+.assistant-trigger-btn.is-speaking {
+  border-color: rgba(96, 165, 250, 0.32) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34), 0 0 22px rgba(37, 99, 235, 0.14) !important;
+}
+
+.assistant-trigger-btn.is-analyzing .trigger-icon-wrap,
+.assistant-trigger-btn.is-speaking .trigger-icon-wrap {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #bfdbfe !important;
+}
+
+.trigger-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.trigger-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+}
+
+.trigger-label {
+  margin-top: 3px;
+  font-size: 0.65rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.trigger-ready-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+}
+
+.trigger-context-badge {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  padding: 0 !important;
+  justify-content: center;
+  border-radius: 7px !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  border: 1px solid rgba(96, 165, 250, 0.16) !important;
+  color: #93c5fd !important;
+}
+
+.assistant-trigger-spin {
+  animation: assistant-trigger-spin 0.9s linear infinite;
+}
+
+@keyframes assistant-trigger-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Compact, refined popup — the JARVIS-inspired feel comes from motion and hierarchy, not neon decoration. */
+.assistant-panel {
+  width: min(380px, calc(100vw - 28px)) !important;
+  height: min(520px, calc(100vh - 92px)) !important;
+  margin-bottom: 11px !important;
+  border-radius: 18px !important;
+  background: rgba(12, 18, 28, 0.97) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(37, 99, 235, 0.05) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  animation: assistant-popup-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.assistant-panel-header {
+  padding: 12px 14px !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+}
+
+.assistant-avatar {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 9px !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  border: 1px solid rgba(96, 165, 250, 0.14);
+  color: #93c5fd !important;
+}
+
+.assistant-name {
+  font-size: 0.88rem !important;
+}
+
+.assistant-messages-area {
+  padding: 14px !important;
+  gap: 11px !important;
+}
+
+.message-bubble {
+  font-size: 0.83rem !important;
+  padding: 9px 12px !important;
+  border-radius: 11px !important;
+}
+
+.assistant-welcome {
+  padding: 18px 10px !important;
+}
+
+.welcome-icon-box {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 11px !important;
+}
+
+.assistant-input-area,
+.assistant-composer,
+.assistant-input-wrap {
+  background: rgba(10, 14, 22, 0.86) !important;
+}
+
+@keyframes assistant-popup-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 560px) {
+  .assistant-floating-container {
+    right: 12px !important;
+    bottom: 12px !important;
+  }
+
+  .assistant-trigger-btn {
+    min-width: 164px;
+  }
+
+  .assistant-panel {
+    width: calc(100vw - 24px) !important;
+    height: min(500px, calc(100vh - 76px)) !important;
+  }
+}
