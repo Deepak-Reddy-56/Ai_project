@@ -13,8 +13,6 @@ fs.mkdirSync(sessionDataPath, { recursive: true });
 app.setPath('userData', appDataRoot);
 app.setPath('sessionData', sessionDataPath);
 
-// The desktop assistant does not need Chromium's disk caches. Disable them so
-// Windows cache-lock warnings cannot interfere with the native runtime.
 app.commandLine.appendSwitch('disable-http-cache');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
@@ -33,15 +31,13 @@ const speechScript = path.join(__dirname, 'speech', 'stt.py');
 
 function resolvePython() {
   if (process.env.ASSISTANT_PYTHON) return { command: process.env.ASSISTANT_PYTHON, args: [] };
-
   try {
     const result = spawnSync('where.exe', ['python'], { encoding: 'utf8', windowsHide: true });
     const first = result.stdout?.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
     if (first) return { command: first, args: [] };
   } catch {
-    // Try the Python launcher below.
+    // Fall through to the Python launcher.
   }
-
   return { command: 'py.exe', args: ['-3'] };
 }
 
@@ -140,9 +136,10 @@ function registerShortcuts() {
 }
 
 function sendSpeechEvent(payload) {
-  latestSpeechState = payload;
-
-  if (['status', 'device', 'ready', 'listening', 'recognized', 'error', 'end'].includes(payload?.type)) {
+  if (['status', 'device', 'ready', 'listening', 'error', 'end'].includes(payload?.type)) {
+    latestSpeechState = payload;
+    console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
+  } else if (payload?.type === 'recognized') {
     console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
   }
 
@@ -237,7 +234,6 @@ function startNativeSpeech() {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-
       try {
         const payload = JSON.parse(trimmed);
         if (payload.type === 'ready') {
