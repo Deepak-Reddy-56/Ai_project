@@ -1,18 +1,25 @@
-/**
- * Voice Service abstraction.
- *
- * Browser mode uses the Web Speech API.
- * Electron desktop mode uses the local Python faster-whisper worker,
- * avoiding Chromium speech-service failures and Windows Speech Recognition.
- */
-
 const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
 const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
-const DEFAULT_WAKE_PHRASES = ['hey assistant', 'ok assistant', 'assistant', 'hello assistant'];
-const RETRYABLE_END_DELAY = 800;
+const DEFAULT_WAKE_PHRASES = ['hey assistant', 'okay assistant', 'ok assistant', 'hello assistant'];
+
+function normalize(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function findWakePhrase(text, phrases) {
+  const normalized = normalize(text);
+  for (const phrase of phrases) {
+    const target = normalize(phrase);
+    if (target && normalized.includes(target)) return target;
+  }
+  // Whisper may occasionally omit "hey"/"okay". Treat a leading assistant as
+  // a wake phrase, but do not trigger on the word in the middle of normal speech.
+  if (/^assistant\b/.test(normalized)) return 'assistant';
+  return null;
+}
 
 class VoiceService {
   constructor() {
@@ -21,10 +28,10 @@ class VoiceService {
     this.isHandsFreeActive = false;
     this.wakePhrases = DEFAULT_WAKE_PHRASES;
     this.activeCallbacks = null;
-    this.shouldRestartHandsFree = false;
-    this.restartTimer = null;
     this.lastError = null;
     this.sessionId = 0;
+    this.desktopReady = !isDesktop;
+    this.desktopWakeBuffer = '';
     this.nativeUnsubscribe = null;
 
     if (isDesktop && window.desktopAssistant?.onVoiceEvent) {
@@ -35,92 +42,82 @@ class VoiceService {
   }
 
   isSupported() {
-    return isDesktop ? Boolean(window.desktopAssistant?.startVoice) : Boolean(SpeechRecognition);
+    return isDesktop
+      ? Boolean(window.desktopAssistant?.startVoice)
+      : Boolean(SpeechRecognition);
+  }
+
+  async ensureDesktopReady() {
+    if (!isDesktop) return true;
+    if (!window.desktopAssistant?.startVoice) throw new Error('Desktop voice bridge is unavailable.');
+    await window.desktopAssistant.startVoice();
+    this.desktopReady = true;
+    return true;
   }
 
   handleNativeVoiceEvent(payload = {}) {
     const callbacks = this.activeCallbacks;
-    if (!callbacks) return;
-
-    if (payload.type === 'status' && payload.state === 'loading-model') {
-      callbacks.onInterim?.('Loading local speech model...');
-      return;
-    }
-
     if (payload.type === 'ready') {
-      this.isListening = true;
+      this.desktopReady = true;
       this.lastError = null;
-      callbacks.onInterim?.('');
+      callbacks?.onInterim?.('');
       return;
     }
 
-    if (payload.type === 'listening') {
-      this.isListening = true;
+    if (payload.type === 'status') {
+      if (payload.state === 'starting-python' || payload.state === 'loading-model') {
+        callbacks?.onInterim?.('Starting local voice engine...');
+      }
       return;
     }
 
-    if (payload.type === 'audio-status') return;
+    if (payload.type === 'device' || payload.type === 'audio-level' || payload.type === 'listening') return;
 
-    if (payload.type === 'audio-level') return;
-
-    if (payload.type === 'hypothesis') {
-      if (payload.text) callbacks.onInterim?.(payload.text);
+    if (payload.type === 'audio-status') {
+      console.warn('[VoiceService] Desktop audio:', payload.message);
       return;
     }
 
     if (payload.type === 'recognized') {
-      const sourceText = String(payload.text || '').trim();
-      if (!sourceText) return;
+      const text = String(payload.text || '').trim();
+      if (!text || !callbacks) return;
 
-      const normalized = sourceText.toLowerCase();
-      let matchedPhrase = null;
-      for (const phrase of this.wakePhrases) {
-        if (normalized.includes(phrase)) {
-          matchedPhrase = phrase;
-          break;
-        }
-      }
-
-      // Hands-free mode is a wake listener: normal speech must not become an
-      // assistant command until a wake phrase is actually present.
       if (callbacks.onWakePhrase) {
-        if (!matchedPhrase) return;
-        const phraseIndex = normalized.indexOf(matchedPhrase);
-        const rawAfterWake = sourceText.slice(phraseIndex + matchedPhrase.length).trim();
-        this.stopNativeListening();
+        this.desktopWakeBuffer = `${this.desktopWakeBuffer} ${text}`.trim().slice(-240);
+        const phrase = findWakePhrase(this.desktopWakeBuffer, this.wakePhrases);
+        if (!phrase) return;
+
+        const bufferNormalized = normalize(this.desktopWakeBuffer);
+        const phraseIndex = bufferNormalized.indexOf(phrase);
+        const afterWake = bufferNormalized.slice(phraseIndex + phrase.length).trim();
+        this.desktopWakeBuffer = '';
         callbacks.onInterim?.('');
-        callbacks.onWakePhrase(rawAfterWake);
+        callbacks.onWakePhrase?.(afterWake);
         return;
       }
 
       callbacks.onInterim?.('');
-      callbacks.onTranscript?.(sourceText);
-      this.stopNativeListening();
+      callbacks.onTranscript?.(text);
+      this.isListening = false;
       return;
     }
 
     if (payload.type === 'error') {
       this.lastError = 'native-error';
+      this.desktopReady = false;
       this.isListening = false;
-      this.shouldRestartHandsFree = false;
-      callbacks.onError?.(
-        payload.message ||
-        'Local Whisper speech recognition failed. Check the Python speech dependencies and microphone device.'
-      );
+      callbacks?.onError?.(payload.message || 'Local Whisper voice engine failed.');
       return;
     }
 
-    if (payload.type === 'end' || payload.type === 'stopped') {
+    if (payload.type === 'end') {
+      this.desktopReady = false;
       this.isListening = false;
-      if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {
-        this.scheduleHandsFreeRestart();
-        return;
-      }
-      callbacks.onEnd?.();
+      callbacks?.onEnd?.();
     }
   }
 
-  startListening({
+  async startListening({
     onTranscript,
     onInterim,
     onError,
@@ -132,39 +129,34 @@ class VoiceService {
   } = {}) {
     if (!this.isSupported()) {
       onError?.(isDesktop
-        ? 'Local Whisper desktop speech input is unavailable.'
+        ? 'Local Whisper desktop voice input is unavailable.'
         : 'Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
 
-    this.clearRestartTimer();
-    this.stopListening({ preserveHandsFree: true });
-
     const currentSession = ++this.sessionId;
     this.lastError = null;
-    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase, continuous, lang };
     this.wakePhrases = wakePhrases;
+    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase, continuous, lang };
 
     if (isDesktop) {
       try {
+        await this.ensureDesktopReady();
+        if (currentSession !== this.sessionId) return false;
         this.recognition = { native: true, session: currentSession };
-        const started = window.desktopAssistant.startVoice();
-        if (!started) {
-          this.recognition = null;
-          this.isListening = false;
-          onError?.('Local Whisper could not start. Install the Python speech dependencies first.');
-          return false;
-        }
         this.isListening = true;
+        if (onWakePhrase) this.desktopWakeBuffer = '';
         return true;
       } catch (err) {
         this.recognition = null;
         this.isListening = false;
-        this.shouldRestartHandsFree = false;
-        onError?.(err.message || 'Failed to start local Whisper speech recognition.');
+        onError?.(err.message || 'Failed to start local Whisper voice input.');
         return false;
       }
     }
+
+    this.stopListening({ preserveHandsFree: true });
+    this.activeCallbacks = { onTranscript, onInterim, onError, onEnd, onWakePhrase, continuous, lang };
 
     try {
       const recognition = new SpeechRecognition();
@@ -174,167 +166,77 @@ class VoiceService {
       recognition.lang = lang;
 
       let finalTranscript = '';
-
       recognition.onstart = () => {
         if (this.sessionId !== currentSession) return;
         this.isListening = true;
       };
-
       recognition.onresult = (event) => {
         if (this.sessionId !== currentSession) return;
-
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
           const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) finalTranscript += transcript + ' ';
-          else interimTranscript += transcript;
+          if (event.results[i].isFinal) finalTranscript += `${transcript} `;
+          else interim += transcript;
         }
-
-        const sourceText = `${finalTranscript}${interimTranscript}`.trim();
-        const normalized = sourceText.toLowerCase();
-
-        let matchedPhrase = null;
-        for (const phrase of this.wakePhrases) {
-          if (normalized.includes(phrase)) {
-            matchedPhrase = phrase;
-            break;
-          }
-        }
-
-        if (matchedPhrase && onWakePhrase) {
-          const phraseIndex = normalized.indexOf(matchedPhrase);
-          const rawAfterWake = sourceText.slice(phraseIndex + matchedPhrase.length).trim();
-          onWakePhrase(rawAfterWake);
-          finalTranscript = '';
-          return;
-        }
-
-        if (interimTranscript) onInterim?.(interimTranscript);
+        if (interim) onInterim?.(interim);
         if (finalTranscript) onTranscript?.(finalTranscript.trim());
       };
-
       recognition.onerror = (event) => {
         if (this.sessionId !== currentSession) return;
-
         const errorType = event?.error || 'unknown';
-        console.warn('[VoiceService] SpeechRecognition error:', errorType);
         this.lastError = errorType;
-
-        if (['network', 'not-allowed', 'service-not-allowed', 'permission-denied'].includes(errorType)) {
-          this.shouldRestartHandsFree = false;
-        }
-
-        if (errorType === 'not-allowed' || errorType === 'permission-denied' || errorType === 'service-not-allowed') {
-          onError?.('Microphone access is blocked. Allow microphone access for localhost in Chrome and try again.');
-          return;
-        }
-
         if (errorType === 'network') {
-          onError?.('Chrome speech recognition could not reach its recognition service. Check your connection or try Chrome/Edge again.');
-          return;
+          onError?.('Chrome speech recognition could not reach its recognition service.');
+        } else if (['not-allowed', 'permission-denied', 'service-not-allowed'].includes(errorType)) {
+          onError?.('Microphone access is blocked. Allow microphone access in Chrome.');
+        } else if (errorType !== 'aborted' && errorType !== 'no-speech') {
+          onError?.(`Voice recognition error: ${errorType}`);
         }
-
-        if (errorType === 'aborted' || errorType === 'no-speech') return;
-
-        onError?.(`Voice recognition error: ${errorType}`);
       };
-
       recognition.onend = () => {
         if (this.sessionId !== currentSession) return;
         this.isListening = false;
-
-        if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {
-          this.scheduleHandsFreeRestart();
-          return;
-        }
-
         onEnd?.();
       };
-
       recognition.start();
       return true;
     } catch (err) {
-      if (this.sessionId !== currentSession) return false;
-      console.error('[VoiceService] Failed to start recognition:', err);
       this.isListening = false;
-      this.shouldRestartHandsFree = false;
       onError?.(err.message || 'Failed to start microphone.');
       return false;
     }
   }
 
   startHandsFreeMode({ onWake, onInterim, onError }) {
-    this.clearRestartTimer();
-    this.lastError = null;
-    this.shouldRestartHandsFree = true;
     this.isHandsFreeActive = true;
-
+    this.lastError = null;
     return this.startListening({
       continuous: true,
       onWakePhrase: onWake,
       onInterim,
       onError,
       onEnd: () => {
-        if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {
-          this.scheduleHandsFreeRestart();
-        }
+        if (this.isHandsFreeActive && !this.lastError) this.startHandsFreeMode({ onWake, onInterim, onError });
       }
     });
   }
 
-  scheduleHandsFreeRestart() {
-    this.clearRestartTimer();
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      if (!this.shouldRestartHandsFree || !this.isHandsFreeActive || this.lastError) return;
-      const callbacks = this.activeCallbacks;
-      if (!callbacks) return;
-      this.startListening({
-        ...callbacks,
-        continuous: true,
-        wakePhrases: this.wakePhrases
-      });
-    }, RETRYABLE_END_DELAY);
-  }
-
-  clearRestartTimer() {
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-  }
-
-  stopNativeListening() {
-    if (isDesktop && window.desktopAssistant?.stopVoice) {
-      try { window.desktopAssistant.stopVoice(); } catch { /* ignore */ }
-    }
-    this.recognition = null;
-    this.isListening = false;
-  }
-
   stopHandsFreeMode() {
-    this.shouldRestartHandsFree = false;
     this.isHandsFreeActive = false;
-    this.clearRestartTimer();
+    this.desktopWakeBuffer = '';
     this.stopListening();
   }
 
   stopListening({ preserveHandsFree = false } = {}) {
-    if (!preserveHandsFree) this.shouldRestartHandsFree = false;
-
-    this.clearRestartTimer();
+    if (!preserveHandsFree) this.isHandsFreeActive = false;
     this.sessionId += 1;
+    this.isListening = false;
+    this.desktopWakeBuffer = '';
 
     const recognition = this.recognition;
     this.recognition = null;
-    this.isListening = false;
 
-    if (isDesktop && recognition?.native) {
-      try { window.desktopAssistant.stopVoice(); } catch { /* ignore */ }
-      return;
-    }
-
-    if (recognition) {
+    if (!isDesktop && recognition) {
       try { recognition.abort(); } catch { /* ignore */ }
     }
   }
