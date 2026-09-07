@@ -16,8 +16,12 @@ export default function VoiceAssistant() {
   const [interimTranscript, setInterimTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [autoSpeak] = useState(true);
+  const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
+  const isAssistantShell = isDesktop && typeof window !== 'undefined' && window.location.hash === '#assistant';
   const [isHandsFree, setIsHandsFree] = useState(() => {
-    if (typeof window !== 'undefined' && window.desktopAssistant?.isDesktop) return true;
+    if (typeof window !== 'undefined' && window.desktopAssistant?.isDesktop) {
+      return window.location.hash === '#assistant';
+    }
     try { return localStorage.getItem('assistant_handsfree') === 'true'; } catch { return false; }
   });
   const [errorMessage, setErrorMessage] = useState('');
@@ -25,8 +29,6 @@ export default function VoiceAssistant() {
   const messagesRef = useRef(messages);
   const stateRef = useRef(state);
   const isHandsFreeRef = useRef(isHandsFree);
-
-  const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -198,18 +200,20 @@ export default function VoiceAssistant() {
     }
   }, [isHandsFree, restartHandsFree]);
 
+  // Only the dedicated Electron assistant shell owns the always-on native
+  // wake listener. The main Electron application window stays quiet so we don't
+  // spawn duplicate Windows recognizers.
   useEffect(() => {
-    if (isHandsFree && voiceService.isSupported()) restartHandsFree();
-  }, [isHandsFree, restartHandsFree]);
+    if (isAssistantShell && isHandsFree && voiceService.isSupported()) restartHandsFree();
+  }, [isAssistantShell, isHandsFree, restartHandsFree]);
 
-  // Electron global shortcut activation: works even when another application owns focus.
   useEffect(() => {
-    if (!isDesktop || !window.desktopAssistant?.onActivate) return undefined;
+    if (!isAssistantShell || !window.desktopAssistant?.onActivate) return undefined;
     return window.desktopAssistant.onActivate(() => {
       setIsOpen(true);
       if (stateRef.current !== 'listening') handleToggleListen();
     });
-  }, [isDesktop, handleToggleListen]);
+  }, [isAssistantShell, handleToggleListen]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -261,10 +265,12 @@ export default function VoiceAssistant() {
         onClose={() => {
           setIsOpen(false);
           speechService.stop();
-          voiceService.stopListening({ preserveHandsFree: true });
           if (isDesktop) {
+            voiceService.stopListening({ preserveHandsFree: true });
             window.desktopAssistant?.hide?.();
-            if (isHandsFreeRef.current) setTimeout(() => restartHandsFree(), 0);
+            if (isAssistantShell && isHandsFreeRef.current) setTimeout(() => restartHandsFree(), 0);
+          } else {
+            voiceService.stopListening();
           }
         }}
         onToggleListen={handleToggleListen}
@@ -278,10 +284,12 @@ export default function VoiceAssistant() {
         onReplaySpeech={handleReplaySpeech}
         onDismissError={() => setErrorMessage('')}
       />
-      <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => {
-        setIsOpen(true);
-        if (isDesktop) window.desktopAssistant?.show?.();
-      }} />
+      {!isAssistantShell && (
+        <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => {
+          setIsOpen(true);
+          if (isDesktop) window.desktopAssistant?.show?.();
+        }} />
+      )}
     </div>
   );
 }
