@@ -37,6 +37,24 @@ def main():
     model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
     emit({'type': 'ready', 'engine': 'faster-whisper', 'model': MODEL_NAME})
 
+    # Report the active Windows input device before opening the stream. This
+    # makes standalone microphone testing much easier to diagnose.
+    try:
+        default_input = sd.default.device[0]
+        if default_input is None or int(default_input) < 0:
+            raise RuntimeError('No default input device is configured in Windows.')
+        device_info = sd.query_devices(int(default_input), 'input')
+        emit({
+            'type': 'device',
+            'index': int(default_input),
+            'name': str(device_info['name']),
+            'sample_rate': int(round(float(device_info['default_samplerate']))),
+            'channels': int(device_info['max_input_channels']),
+        })
+    except Exception as exc:
+        emit({'type': 'error', 'message': f'Could not access the default microphone: {exc}'})
+        return 1
+
     command_queue = queue.Queue()
     active = False
 
@@ -48,37 +66,64 @@ def main():
             except Exception:
                 continue
 
-    threading.Thread(target=read_commands, daemon=True).start()
+    stdin_is_terminal = bool(getattr(sys.stdin, 'isatty', lambda: False)())
+    if not stdin_is_terminal:
+        threading.Thread(target=read_commands, daemon=True).start()
 
     blocksize = int(SAMPLE_RATE * BLOCK_SECONDS)
     window_size = int(SAMPLE_RATE * WINDOW_SECONDS)
     audio_buffer = np.zeros((0,), dtype=np.float32)
     stream = None
 
+    def start_capture():
+        nonlocal stream, active, audio_buffer
+        if active:
+            return
+        audio_buffer = np.zeros((0,), dtype=np.float32)
+        stream = sd.RawInputStream(
+            samplerate=SAMPLE_RATE,
+            channels=CHANNELS,
+            dtype='int16',
+            blocksize=blocksize,
+            latency='high',
+        )
+        stream.start()
+        active = True
+        emit({'type': 'listening'})
+
+    def stop_capture():
+        nonlocal stream, active, audio_buffer
+        active = False
+        audio_buffer = np.zeros((0,), dtype=np.float32)
+        if stream is not None:
+            try:
+                stream.stop()
+            finally:
+                stream.close()
+            stream = None
+        emit({'type': 'stopped'})
+
+    # When this script is run directly from PowerShell, start immediately so it
+    # behaves like a normal microphone test. When Electron launches it, stdin is
+    # not a terminal, so Electron retains explicit start/stop control.
+    if stdin_is_terminal:
+        try:
+            start_capture()
+        except Exception as exc:
+            emit({'type': 'error', 'message': f'Microphone capture failed to start: {exc}'})
+            return 1
+
     try:
         while True:
-            while not command_queue.empty():
+            while not stdin_is_terminal and not command_queue.empty():
                 command = command_queue.get_nowait()
-                if command == 'start':
-                    active = True
-                    audio_buffer = np.zeros((0,), dtype=np.float32)
-                    if stream is None:
-                        stream = sd.RawInputStream(
-                            samplerate=SAMPLE_RATE,
-                            channels=CHANNELS,
-                            dtype='int16',
-                            blocksize=blocksize,
-                        )
-                        stream.start()
-                    emit({'type': 'listening'})
-                elif command == 'stop':
-                    active = False
-                    audio_buffer = np.zeros((0,), dtype=np.float32)
-                    if stream is not None:
-                        stream.stop()
-                        stream.close()
-                        stream = None
-                    emit({'type': 'stopped'})
+                try:
+                    if command == 'start':
+                        start_capture()
+                    elif command == 'stop':
+                        stop_capture()
+                except Exception as exc:
+                    emit({'type': 'error', 'message': f'Microphone command failed: {exc}'})
 
             if not active or stream is None:
                 time.sleep(0.05)
@@ -117,7 +162,7 @@ def main():
             if text:
                 emit({'type': 'recognized', 'text': text})
 
-            # Keep a small overlap to avoid dropping words at window boundaries.
+            # Keep a small overlap to avoid dropping words between windows.
             audio_buffer = audio_buffer[-int(SAMPLE_RATE * 0.75):]
 
     except KeyboardInterrupt:
@@ -134,7 +179,7 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        raise SystemExit(main())
     except Exception as exc:
         emit({'type': 'error', 'message': str(exc)})
         sys.exit(1)
