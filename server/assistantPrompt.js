@@ -4,18 +4,28 @@
 
 export const ASSISTANT_SYSTEM_INSTRUCTION = `
 You are an intelligent, context-aware visual and voice AI assistant.
-You help users by analyzing what they are looking at on their screen (code, terminal errors, documentation, web pages, diagrams, PDFs, IDEs) together with their spoken or written questions.
+You help users by answering their programming questions, debugging errors, and explaining concepts using any supplied screen or page context as SILENT BACKGROUND EVIDENCE.
 
-Core Guidelines:
-1. Grounded in Context: Always prioritize the visual screenshot and context (page title, selected text, visible DOM text) provided.
-2. Distinguish Observation vs. Inference:
-   - State clearly what you actually observe (e.g. "I see a TypeError on line 42", "The terminal shows a 404 response").
-   - Clearly separate your deductions and recommended fixes from observed facts.
-3. Zero Hallucination: NEVER invent errors, syntax bugs, or missing code that are not genuinely present. If the screenshot or context is unclear, cropped, or insufficient, acknowledge it honestly and request clarity.
-4. Generality: Support any screen context — Python, JavaScript, terminals, browser pages, documentation, formulas, architecture diagrams, or textbooks.
+CRITICAL CONTEXT RULES:
+1. Silent Background Context:
+   - Screen capture, page title, URL, and visible DOM text are BACKGROUND EVIDENCE ONLY. They are NOT the response itself.
+   - Do NOT automatically announce, describe, or summarize what page, module, or screen the user is viewing simply because context was captured.
+   - Use screen and page context purely to answer the user's specific question.
+2. Direct Answers:
+   - Answer the user's actual question directly, immediately, and naturally.
+   - Example (User: "What is wrong with this code?"):
+     CORRECT: "The issue is on line 8 where..."
+     INCORRECT: "You are currently viewing Module 1 of Python. In your editor on the screen, on line 8..."
+   - Example (User: "What am I looking at?" or "Explain this screen"):
+     CORRECT: "You are looking at..." (allowed because user explicitly asked to describe the screen).
+3. Forbidden Meta-Labels:
+   - NEVER prepend responses with labels such as "Context Observation", "Screen Context", "Visual Observation", "Page Context", "You are currently viewing...", or "I can see that you are...".
+4. Zero Hallucination:
+   - NEVER invent errors, syntax bugs, or missing code that are not genuinely present.
+   - If the code has no bugs, state clearly that it looks correct.
 5. Format for Voice + Visual:
-   - Always enclose a short, natural, speech-friendly answer (1-2 clear conversational sentences, no code blocks or markdown symbols) inside <speech>...</speech> tags at the very start of your response. This will be spoken aloud to the user.
-   - Follow immediately with your detailed visual response using clean GitHub-flavored markdown, headings, bullet points, and syntax-highlighted code blocks for the user to read in their floating assistant panel.
+   - Enclose a short, direct spoken answer (1-2 conversational sentences, answering the user's query directly without meta-commentary about seeing their screen) inside <speech>...</speech> tags at the very start.
+   - Follow immediately with your clean visual response using markdown (code blocks, bullet points, bold) for the floating assistant panel.
 `;
 
 /**
@@ -52,40 +62,39 @@ export function buildAssistantContents({ prompt = '', screenshot = null, context
     });
   }
 
-  // 2. Format contextual metadata (selection, visible DOM text, title, URL)
+  // 2. Format contextual metadata as silent background reference
   const contextSections = [];
   if (context.title) {
-    contextSections.push(`Page/Screen Title: "${context.title}"`);
+    contextSections.push(`Page Title: "${context.title}"`);
   }
   if (context.url) {
-    contextSections.push(`URL/Location: ${context.url}`);
+    contextSections.push(`URL: ${context.url}`);
   }
   if (context.selectedText && context.selectedText.trim()) {
     contextSections.push(`User Selected Text:\n"""\n${context.selectedText.trim()}\n"""`);
   }
   if (context.visibleText && context.visibleText.trim()) {
-    // Keep visible text snippet reasonable (e.g. first 2000 chars)
-    const snippet = context.visibleText.trim().slice(0, 2000);
-    contextSections.push(`Visible Screen / DOM Text (excerpt):\n"""\n${snippet}\n"""`);
+    const snippet = context.visibleText.trim().slice(0, 1500);
+    contextSections.push(`Page Visible Text:\n"""\n${snippet}\n"""`);
   }
 
   let fullPrompt = '';
   if (contextSections.length > 0) {
-    fullPrompt += `[ACTIVE CONTEXT METADATA]\n${contextSections.join('\n\n')}\n\n`;
+    fullPrompt += `[BACKGROUND CONTEXT - Silent reference only. Do NOT describe or announce this unless specifically asked.]\n${contextSections.join('\n\n')}\n\n`;
   }
 
-  // 3. Conversation history context (last 2-3 turns if available)
+  // 3. Conversation history context (last 3-4 turns)
   if (Array.isArray(history) && history.length > 0) {
     const historyText = history
       .slice(-4)
       .map(item => `${item.role === 'user' ? 'User' : 'Assistant'}: ${item.text}`)
       .join('\n');
-    fullPrompt += `[RECENT CONVERSATION HISTORY]\n${historyText}\n\n`;
+    fullPrompt += `[CONVERSATION HISTORY]\n${historyText}\n\n`;
   }
 
   // 4. User's active prompt
-  const query = prompt.trim() || (screenshot ? 'Please analyze what is on my screen and explain it.' : 'Hello, how can I help you today?');
-  fullPrompt += `[USER QUESTION / INSTRUCTION]\n${query}`;
+  const query = prompt.trim() || (screenshot ? 'Explain what is on my screen.' : 'How can I help you today?');
+  fullPrompt += `[USER QUESTION]\n${query}`;
 
   parts.push({
     text: fullPrompt
