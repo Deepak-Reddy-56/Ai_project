@@ -2,8 +2,8 @@
  * Voice Service abstraction.
  *
  * Browser mode uses the Web Speech API.
- * Electron desktop mode uses the native Windows SpeechRecognitionEngine bridge,
- * avoiding Chromium's remote SpeechRecognition service and its network errors.
+ * Electron desktop mode uses the local Python faster-whisper worker,
+ * avoiding Chromium speech-service failures and Windows Speech Recognition.
  */
 
 const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
@@ -42,11 +42,26 @@ class VoiceService {
     const callbacks = this.activeCallbacks;
     if (!callbacks) return;
 
+    if (payload.type === 'status' && payload.state === 'loading-model') {
+      callbacks.onInterim?.('Loading local speech model...');
+      return;
+    }
+
     if (payload.type === 'ready') {
       this.isListening = true;
       this.lastError = null;
+      callbacks.onInterim?.('');
       return;
     }
+
+    if (payload.type === 'listening') {
+      this.isListening = true;
+      return;
+    }
+
+    if (payload.type === 'audio-status') return;
+
+    if (payload.type === 'audio-level') return;
 
     if (payload.type === 'hypothesis') {
       if (payload.text) callbacks.onInterim?.(payload.text);
@@ -66,8 +81,8 @@ class VoiceService {
         }
       }
 
-      // In hands-free desktop mode the recognizer is always listening, but it
-      // must ignore ordinary speech until a wake phrase is heard.
+      // Hands-free mode is a wake listener: normal speech must not become an
+      // assistant command until a wake phrase is actually present.
       if (callbacks.onWakePhrase) {
         if (!matchedPhrase) return;
         const phraseIndex = normalized.indexOf(matchedPhrase);
@@ -90,12 +105,12 @@ class VoiceService {
       this.shouldRestartHandsFree = false;
       callbacks.onError?.(
         payload.message ||
-        'Windows speech recognition could not start. Check that a microphone is connected and Windows Speech Recognition is available.'
+        'Local Whisper speech recognition failed. Check the Python speech dependencies and microphone device.'
       );
       return;
     }
 
-    if (payload.type === 'end') {
+    if (payload.type === 'end' || payload.type === 'stopped') {
       this.isListening = false;
       if (this.shouldRestartHandsFree && this.isHandsFreeActive && !this.lastError) {
         this.scheduleHandsFreeRestart();
@@ -117,7 +132,7 @@ class VoiceService {
   } = {}) {
     if (!this.isSupported()) {
       onError?.(isDesktop
-        ? 'Native desktop speech input is unavailable.'
+        ? 'Local Whisper desktop speech input is unavailable.'
         : 'Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
@@ -137,7 +152,7 @@ class VoiceService {
         if (!started) {
           this.recognition = null;
           this.isListening = false;
-          onError?.('Windows speech recognition could not start. Check microphone access in Windows Settings.');
+          onError?.('Local Whisper could not start. Install the Python speech dependencies first.');
           return false;
         }
         this.isListening = true;
@@ -146,7 +161,7 @@ class VoiceService {
         this.recognition = null;
         this.isListening = false;
         this.shouldRestartHandsFree = false;
-        onError?.(err.message || 'Failed to start Windows speech recognition.');
+        onError?.(err.message || 'Failed to start local Whisper speech recognition.');
         return false;
       }
     }
