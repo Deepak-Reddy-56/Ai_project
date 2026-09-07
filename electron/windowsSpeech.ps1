@@ -1,17 +1,48 @@
 $ErrorActionPreference = 'Stop'
 
+function Emit($payload) {
+    [Console]::WriteLine(($payload | ConvertTo-Json -Compress))
+    [Console]::Out.Flush()
+}
+
+$recognizer = $null
+
 try {
     Add-Type -AssemblyName System.Speech
 
-    $recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-    $recognizer.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
-    $recognizer.SetInputToDefaultAudioDevice()
+    # Use the shared Windows desktop speech recognizer instead of creating an
+    # isolated SpeechRecognitionEngine. The shared recognizer uses the same
+    # Windows Speech Recognition service and input configuration that desktop
+    # speech uses.
+    $recognizer = New-Object System.Speech.Recognition.SpeechRecognizer
+
+    $installed = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()
+    $recognizerInfo = @($installed | ForEach-Object {
+        @{ id = $_.Id; name = $_.Name; culture = $_.Culture.Name }
+    })
+
+    Emit @{
+        type = 'ready'
+        engine = 'Windows Shared Speech Recognition'
+        recognizers = $recognizerInfo
+        enabled = [bool]$recognizer.Enabled
+        state = [string]$recognizer.State
+    }
+
+    $dictation = New-Object System.Speech.Recognition.DictationGrammar
+    $dictation.Name = 'CodeCompanion Dictation'
+    $recognizer.LoadGrammar($dictation)
+
+    $recognizer.add_SpeechDetected({
+        param($sender, $event)
+        Emit @{ type = 'speech-detected' }
+    })
 
     $recognizer.add_SpeechHypothesized({
         param($sender, $event)
         $text = [string]$event.Result.Text
         if ($text) {
-            [Console]::WriteLine((ConvertTo-Json @{ type = 'hypothesis'; text = $text } -Compress))
+            Emit @{ type = 'hypothesis'; text = $text }
         }
     })
 
@@ -20,35 +51,65 @@ try {
         $text = [string]$event.Result.Text
         $confidence = [double]$event.Result.Confidence
         if ($text) {
-            [Console]::WriteLine((ConvertTo-Json @{ type = 'recognized'; text = $text; confidence = $confidence } -Compress))
+            Emit @{ type = 'recognized'; text = $text; confidence = $confidence }
         }
     })
 
-    $recognizer.add_RecognizeCompleted({
+    $recognizer.add_SpeechRecognitionRejected({
         param($sender, $event)
-        if ($event.Error) {
-            [Console]::WriteLine((ConvertTo-Json @{ type = 'error'; message = $event.Error.Message } -Compress))
-        } else {
-            [Console]::WriteLine((ConvertTo-Json @{ type = 'end' } -Compress))
+        $text = [string]$event.Result.Text
+        Emit @{ type = 'rejected'; text = $text; confidence = [double]$event.Result.Confidence }
+    })
+
+    $recognizer.add_AudioLevelUpdated({
+        param($sender, $event)
+        Emit @{ type = 'audio-level'; level = [int]$event.AudioLevel }
+    })
+
+    $recognizer.add_AudioSignalProblemOccurred({
+        param($sender, $event)
+        Emit @{
+            type = 'audio-problem'
+            problem = [string]$event.AudioSignalProblem
         }
     })
 
-    [Console]::WriteLine((ConvertTo-Json @{ type = 'ready'; engine = 'Windows Speech Recognition' } -Compress))
-    [Console]::Out.Flush()
+    $recognizer.add_AudioStateChanged({
+        param($sender, $event)
+        Emit @{
+            type = 'audio-state'
+            state = [string]$event.AudioState
+        }
+    })
 
-    $recognizer.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
+    $recognizer.add_StateChanged({
+        param($sender, $event)
+        Emit @{
+            type = 'state'
+            state = [string]$event.RecognizerState
+        }
+    })
+
+    # The shared recognizer controls Windows desktop speech recognition and its
+    # default configured input device, so explicitly enable it before listening.
+    $recognizer.Enabled = $true
+
+    Emit @{ type = 'listening'; state = [string]$recognizer.State }
 
     while ($true) {
         Start-Sleep -Milliseconds 250
     }
 }
 catch {
-    [Console]::WriteLine((ConvertTo-Json @{ type = 'error'; message = $_.Exception.Message } -Compress))
+    Emit @{
+        type = 'error'
+        message = $_.Exception.Message
+        detail = $_.Exception.ToString()
+    }
     exit 1
 }
 finally {
     if ($recognizer) {
-        try { $recognizer.RecognizeAsyncCancel() } catch { }
         try { $recognizer.Dispose() } catch { }
     }
 }
