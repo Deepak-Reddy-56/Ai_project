@@ -4,13 +4,14 @@ export const PERSONALIZATION_STORAGE_KEY = 'code_companion_personalization_v1';
 export const LEARNING_ACTIVITY_KEY = 'code_companion_learning_activity_v1';
 
 const DEFAULT_PROFILE = {
-  version: 1,
+  version: 2,
   goal: 'interview',
   language: 'python',
   level: 'beginner',
   dailyMinutes: 30,
   assessmentComplete: false,
   assessmentScores: {},
+  assessmentHistory: [],
   createdAt: null,
   updatedAt: null,
 };
@@ -59,7 +60,7 @@ export function loadProfile() {
     if (!raw) return { ...DEFAULT_PROFILE };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_PROFILE };
-    return { ...DEFAULT_PROFILE, ...parsed };
+    return { ...DEFAULT_PROFILE, ...parsed, assessmentHistory: Array.isArray(parsed.assessmentHistory) ? parsed.assessmentHistory : [] };
   } catch {
     return { ...DEFAULT_PROFILE };
   }
@@ -75,6 +76,7 @@ export function saveProfile(profile) {
     language: LEARNING_DATA[requestedLanguage] ? requestedLanguage : DEFAULT_PROFILE.language,
     level: LEVELS.includes(requestedLevel) ? requestedLevel : DEFAULT_PROFILE.level,
     dailyMinutes: DAILY_MINUTES.includes(requestedMinutes) ? requestedMinutes : DEFAULT_PROFILE.dailyMinutes,
+    assessmentHistory: Array.isArray(profile?.assessmentHistory) ? profile.assessmentHistory : [],
     updatedAt: new Date().toISOString(),
   };
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
@@ -176,7 +178,7 @@ export function buildPersonalizedPlan(profile, progressOverrides = {}) {
 
   const nextModule = ranked.find((item) => !item.completed) || ranked[0] || null;
   const needsReview = ranked
-    .filter((item) => item.completed && item.mastery < 75)
+    .filter((item) => item.mastery > 0 && item.mastery < 75)
     .sort((a, b) => a.mastery - b.mastery)
     .slice(0, 3);
   const recommended = ranked
@@ -208,44 +210,94 @@ export function buildPersonalizedPlan(profile, progressOverrides = {}) {
   };
 }
 
-export function createAssessmentQuestions(languageId, count = 6) {
+function takeDistractors(pool, correct, count = 3) {
+  return pool.filter((item) => item !== correct).slice(0, count);
+}
+
+function createConceptQuestion(module, allConcepts, index) {
+  const concept = module.concepts?.[index % module.concepts.length];
+  if (!concept) return null;
+  const correct = concept.desc;
+  const distractors = takeDistractors(allConcepts.map((item) => item.desc), correct, 3);
+  return {
+    id: `assessment-${module.id}-concept-${index}`,
+    moduleId: module.id,
+    type: 'concept',
+    question: `Which statement about ${concept.name} is correct?`,
+    answer: correct,
+    options: [correct, ...distractors],
+    explanation: `${concept.name}: ${concept.desc}`,
+  };
+}
+
+function createModuleQuestion(module, allModules) {
+  const correct = module.summary;
+  const distractors = takeDistractors(allModules.map((item) => item.summary), correct, 3);
+  return {
+    id: `assessment-${module.id}-summary`,
+    moduleId: module.id,
+    type: 'understanding',
+    question: `Which explanation best matches ${module.title.replace(/^Module \d+ — /, '')}?`,
+    answer: correct,
+    options: [correct, ...distractors],
+    explanation: correct,
+  };
+}
+
+export function createAssessmentQuestions(languageId, count = 10) {
   const modules = getModules(languageId);
   if (!modules.length) return [];
 
-  const candidates = modules.slice(0, Math.min(modules.length, 8));
-  const questions = candidates.map((module, index) => {
-    const distractors = candidates
-      .filter((candidate) => candidate.id !== module.id)
-      .slice(0, 3)
-      .map((candidate) => candidate.title.replace(/^Module \d+ — /, ''));
+  const allConcepts = modules.flatMap((module) => (module.concepts || []).map((concept) => ({ ...concept, moduleId: module.id })));
+  const pool = [];
 
-    return {
-      id: `assessment-${module.id}`,
-      moduleId: module.id,
-      question: `Which topic best matches this description? ${module.description}`,
-      answer: module.title.replace(/^Module \d+ — /, ''),
-      options: [module.title.replace(/^Module \d+ — /, ''), ...distractors].sort((a, b) => a.localeCompare(b)),
-      explanation: module.summary,
-      index,
-    };
+  modules.forEach((module) => {
+    const conceptQuestion = createConceptQuestion(module, allConcepts, 0);
+    const understandingQuestion = createModuleQuestion(module, modules);
+    if (conceptQuestion) pool.push(conceptQuestion);
+    pool.push(understandingQuestion);
   });
 
-  return questions.slice(0, count);
+  // Keep the assessment representative: every module gets priority before we repeat a module.
+  const representative = modules.map((module) => pool.find((question) => question.moduleId === module.id)).filter(Boolean);
+  const remaining = pool.filter((question) => !representative.includes(question));
+  const selected = [...representative, ...remaining].slice(0, Math.max(1, Math.min(count, pool.length)));
+
+  // Deterministic shuffle keeps the assessment stable on rerender while preventing all correct answers from being first.
+  return selected.map((question, questionIndex) => {
+    const offset = (questionIndex * 2 + 1) % question.options.length;
+    const rotated = [...question.options.slice(offset), ...question.options.slice(0, offset)];
+    return { ...question, options: rotated };
+  });
 }
 
 export function applyAssessmentResult(profile, results) {
   const updatedScores = { ...(profile.assessmentScores || {}) };
+  const correctCount = results.filter((result) => result.correct).length;
+  const total = results.length || 1;
+  const scorePercent = Math.round((correctCount / total) * 100);
+  const now = new Date().toISOString();
+
   for (const result of results) {
+    const current = Number(updatedScores[result.moduleId] || 0);
     updatedScores[result.moduleId] = result.correct
-      ? Math.min(100, Math.max(60, Number(updatedScores[result.moduleId] || 0) + 25))
-      : Math.max(20, Number(updatedScores[result.moduleId] || 50) - 20);
+      ? Math.min(100, Math.max(65, current + 20))
+      : Math.max(20, current - 15 || 35);
   }
-  return saveProfile({ ...profile, assessmentComplete: true, assessmentScores: updatedScores });
+
+  const history = Array.isArray(profile.assessmentHistory) ? profile.assessmentHistory : [];
+  return saveProfile({
+    ...profile,
+    version: 2,
+    assessmentComplete: true,
+    assessmentScores: updatedScores,
+    assessmentHistory: [...history.slice(-9), { at: now, scorePercent, correctCount, total, results }],
+  });
 }
 
 export function getPersonalizationSummary(profile, plan) {
   const language = getLanguageConfig(profile.language);
   if (!plan.nextModule) return `You have completed the ${language.label} roadmap. Keep your skills sharp with review and challenge sessions.`;
-  if (plan.needsReview.length) return `Your next step is ${plan.nextModule.title.replace(/^Module \d+ — /, '')}. I also found ${plan.needsReview.length} completed topic${plan.needsReview.length === 1 ? '' : 's'} that could use a quick review.`;
+  if (plan.needsReview.length) return `Your next step is ${plan.nextModule.title.replace(/^Module \d+ — /, '')}. I also found ${plan.needsReview.length} topic${plan.needsReview.length === 1 ? '' : 's'} that need reinforcement.`;
   return `Your path is focused on ${GOALS[profile.goal]?.label.toLowerCase() || 'your goal'}. Start with ${plan.nextModule.title.replace(/^Module \d+ — /, '')}, then continue through the recommended sequence.`;
 }
