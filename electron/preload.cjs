@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('desktopAssistant', {
   show: () => ipcRenderer.send('desktop-assistant:show'),
   hide: () => ipcRenderer.send('desktop-assistant:hide'),
   startVoice: () => ipcRenderer.invoke('desktop-assistant:start-voice'),
+  activateVoice: () => ipcRenderer.send('desktop-assistant:activate-voice'),
   stopVoice: () => ipcRenderer.send('desktop-assistant:stop-voice'),
   onActivate: (callback) => {
     const handler = () => callback?.();
