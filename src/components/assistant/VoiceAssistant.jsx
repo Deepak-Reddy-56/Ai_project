@@ -19,9 +19,7 @@ export default function VoiceAssistant() {
   const isDesktop = typeof window !== 'undefined' && Boolean(window.desktopAssistant?.isDesktop);
   const isAssistantShell = isDesktop && typeof window !== 'undefined' && window.location.hash === '#assistant';
   const [isHandsFree, setIsHandsFree] = useState(() => {
-    if (typeof window !== 'undefined' && window.desktopAssistant?.isDesktop) {
-      return window.location.hash === '#assistant';
-    }
+    if (typeof window !== 'undefined' && window.desktopAssistant?.isDesktop) return window.location.hash === '#assistant';
     try { return localStorage.getItem('assistant_handsfree') === 'true'; } catch { return false; }
   });
   const [errorMessage, setErrorMessage] = useState('');
@@ -29,7 +27,6 @@ export default function VoiceAssistant() {
   const messagesRef = useRef(messages);
   const stateRef = useRef(state);
   const isHandsFreeRef = useRef(isHandsFree);
-
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => {
@@ -65,23 +62,21 @@ export default function VoiceAssistant() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  useEffect(() => () => {
-    voiceService.stopListening();
-    speechService.stop();
-  }, []);
+  useEffect(() => () => { voiceService.stopListening(); speechService.stop(); }, []);
 
   const restartHandsFree = useCallback(() => {
     if (!isHandsFreeRef.current || !voiceService.isSupported()) return;
     voiceService.startHandsFreeMode({
-      onWake: (queryAfterWake) => {
+      onWake: () => {
         playWakeChime();
         if (isDesktop) window.desktopAssistant?.show?.();
         setIsOpen(true);
-        if (queryAfterWake?.trim()) handleSendMessage(queryAfterWake.trim());
-        else handleToggleListen();
+        setErrorMessage('');
+        setInterimTranscript('Listening…');
+        setState('listening');
       },
       onInterim: (interim) => {
-        if (stateRef.current === 'listening') setInterimTranscript(interim);
+        if (interim) setInterimTranscript(interim);
       },
       onError: (err) => {
         console.warn('[VoiceAssistant] Hands-free listener notice:', err);
@@ -94,7 +89,7 @@ export default function VoiceAssistant() {
     const promptToSend = queryText.trim();
     if (!promptToSend && !screenshot && !selectedText && !isDesktop) return;
 
-    voiceService.stopListening();
+    voiceService.stopListening({ preserveHandsFree: isHandsFreeRef.current });
     setInterimTranscript('');
     setErrorMessage('');
     setState('analyzing');
@@ -143,6 +138,7 @@ export default function VoiceAssistant() {
 
       const finishTurn = () => {
         setState('idle');
+        setInterimTranscript('');
         if (isHandsFreeRef.current) restartHandsFree();
       };
 
@@ -165,15 +161,17 @@ export default function VoiceAssistant() {
     }
   }, [screenshot, selectedText, isMuted, autoSpeak, isDesktop, restartHandsFree]);
 
-  const handleToggleListen = useCallback(() => {
+  const handleToggleListen = useCallback(async () => {
     if (stateRef.current === 'listening') {
-      voiceService.stopListening(); setState('idle'); setInterimTranscript('');
+      voiceService.stopListening();
+      setState('idle');
+      setInterimTranscript('');
       if (isHandsFreeRef.current) restartHandsFree();
       return;
     }
     if (stateRef.current === 'speaking') speechService.stop();
     setIsOpen(true); setErrorMessage(''); setState('listening'); setInterimTranscript('');
-    const started = voiceService.startListening({
+    const started = await voiceService.startListening({
       onInterim: setInterimTranscript,
       onTranscript: (finalText) => {
         setInterimTranscript('');
@@ -185,24 +183,17 @@ export default function VoiceAssistant() {
         if (stateRef.current === 'listening') { setState('idle'); setInterimTranscript(''); }
       }
     });
-    if (!started) setState('idle');
+    if (!started && stateRef.current === 'listening') setState('idle');
   }, [handleSendMessage, restartHandsFree]);
 
   const handleToggleHandsFree = useCallback(() => {
     const nextVal = !isHandsFree;
     setIsHandsFree(nextVal);
-    if (nextVal) {
-      isHandsFreeRef.current = true;
-      restartHandsFree();
-    } else {
-      isHandsFreeRef.current = false;
-      voiceService.stopHandsFreeMode();
-    }
+    isHandsFreeRef.current = nextVal;
+    if (nextVal) restartHandsFree();
+    else voiceService.stopHandsFreeMode();
   }, [isHandsFree, restartHandsFree]);
 
-  // Only the dedicated Electron assistant shell owns the always-on native
-  // wake listener. The main Electron application window stays quiet so we don't
-  // spawn duplicate Windows recognizers.
   useEffect(() => {
     if (isAssistantShell && isHandsFree && voiceService.isSupported()) restartHandsFree();
   }, [isAssistantShell, isHandsFree, restartHandsFree]);
@@ -230,25 +221,11 @@ export default function VoiceAssistant() {
       if (result?.screenshot) { setScreenshot(result.screenshot); setIsOpen(true); }
     } catch (err) { setErrorMessage('Screen capture failed: ' + (err.message || 'Permission denied')); }
   };
-
   const handleRemoveScreenshot = () => setScreenshot(null);
   const handleRemoveSelectedText = () => setSelectedText('');
-  const handleToggleMute = () => {
-    const nextMuted = !isMuted; setIsMuted(nextMuted); speechService.setMuted(nextMuted);
-  };
-  const handleClearChat = () => {
-    speechService.stop(); voiceService.stopListening(); setMessages([]); setScreenshot(null); setSelectedText(''); setErrorMessage(''); setState('idle');
-    if (isHandsFreeRef.current) restartHandsFree();
-  };
-  const handleReplaySpeech = (text) => {
-    if (!text) return;
-    speechService.stop(); setState('speaking');
-    speechService.speak(text, {
-      onStart: () => setState('speaking'),
-      onEnd: () => { setState('idle'); if (isHandsFreeRef.current) restartHandsFree(); },
-      onError: () => { setState('idle'); if (isHandsFreeRef.current) restartHandsFree(); }
-    });
-  };
+  const handleToggleMute = () => { const nextMuted = !isMuted; setIsMuted(nextMuted); speechService.setMuted(nextMuted); };
+  const handleClearChat = () => { speechService.stop(); voiceService.stopListening({ preserveHandsFree: isHandsFreeRef.current }); setMessages([]); setScreenshot(null); setSelectedText(''); setErrorMessage(''); setState('idle'); if (isHandsFreeRef.current) restartHandsFree(); };
+  const handleReplaySpeech = (text) => { if (!text) return; speechService.stop(); setState('speaking'); speechService.speak(text, { onStart: () => setState('speaking'), onEnd: () => { setState('idle'); if (isHandsFreeRef.current) restartHandsFree(); }, onError: () => { setState('idle'); if (isHandsFreeRef.current) restartHandsFree(); } }); };
 
   return (
     <div className="assistant-floating-container">
@@ -269,9 +246,7 @@ export default function VoiceAssistant() {
             voiceService.stopListening({ preserveHandsFree: true });
             window.desktopAssistant?.hide?.();
             if (isAssistantShell && isHandsFreeRef.current) setTimeout(() => restartHandsFree(), 0);
-          } else {
-            voiceService.stopListening();
-          }
+          } else voiceService.stopListening();
         }}
         onToggleListen={handleToggleListen}
         onToggleHandsFree={handleToggleHandsFree}
@@ -285,10 +260,7 @@ export default function VoiceAssistant() {
         onDismissError={() => setErrorMessage('')}
       />
       {!isAssistantShell && (
-        <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => {
-          setIsOpen(true);
-          if (isDesktop) window.desktopAssistant?.show?.();
-        }} />
+        <AssistantTrigger isOpen={isOpen} state={state} isHandsFree={isHandsFree} hasScreenshot={Boolean(screenshot)} onClick={() => { setIsOpen(true); if (isDesktop) window.desktopAssistant?.show?.(); }} />
       )}
     </div>
   );

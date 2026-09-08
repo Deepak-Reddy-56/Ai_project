@@ -3,7 +3,7 @@ const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
-const DEFAULT_WAKE_PHRASES = ['hey assistant', 'okay assistant', 'ok assistant', 'hello assistant'];
+const DEFAULT_WAKE_PHRASES = ['hey assistant', 'okay assistant', 'ok assistant', 'hello assistant', 'hey jarvis', 'jarvis'];
 
 function normalize(text) {
   return String(text || '')
@@ -11,16 +11,6 @@ function normalize(text) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function findWakePhrase(text, phrases) {
-  const normalized = normalize(text);
-  for (const phrase of phrases) {
-    const target = normalize(phrase);
-    if (target && normalized.includes(target)) return target;
-  }
-  if (/^assistant\b/.test(normalized)) return 'assistant';
-  return null;
 }
 
 class VoiceService {
@@ -33,7 +23,6 @@ class VoiceService {
     this.lastError = null;
     this.sessionId = 0;
     this.desktopReady = !isDesktop;
-    this.desktopWakeBuffer = '';
 
     if (isDesktop && window.desktopAssistant?.onVoiceEvent) {
       window.desktopAssistant.onVoiceEvent((payload) => this.handleNativeVoiceEvent(payload));
@@ -65,47 +54,42 @@ class VoiceService {
     }
 
     if (payload.type === 'status') {
-      if (payload.state === 'starting-python' || payload.state === 'loading-model') {
+      if (payload.state === 'starting-python' || payload.state === 'loading-wake-model' || payload.state === 'loading-model') {
         callbacks?.onInterim?.('Starting local voice engine...');
+      } else if (payload.state === 'processing-command') {
+        callbacks?.onInterim?.('Processing voice command...');
       }
       return;
     }
 
-    if (payload.type === 'device') {
+    if (payload.type === 'device') return;
+
+    if (payload.type === 'wake') {
+      if (!callbacks?.onWakePhrase) return;
+      this.isListening = true;
+      callbacks.onInterim?.('Listening…');
+      callbacks.onWakePhrase?.('');
       return;
     }
 
     if (payload.type === 'listening') {
       this.desktopReady = true;
+      this.isListening = true;
+      if (payload.mode === 'wake') callbacks?.onInterim?.('');
       return;
     }
 
-    if (payload.type === 'audio-level' || payload.type === 'audio-status') {
-      return;
-    }
+    if (payload.type === 'audio-level' || payload.type === 'audio-status') return;
 
     if (payload.type === 'recognized') {
       const text = String(payload.text || '').trim();
       if (!text || !callbacks) return;
-
-      if (callbacks.onWakePhrase) {
-        this.desktopWakeBuffer = `${this.desktopWakeBuffer} ${text}`.trim().slice(-320);
-        const phrase = findWakePhrase(this.desktopWakeBuffer, this.wakePhrases);
-        if (!phrase) return;
-
-        const bufferNormalized = normalize(this.desktopWakeBuffer);
-        const phraseIndex = bufferNormalized.indexOf(phrase);
-        const afterWake = bufferNormalized.slice(phraseIndex + phrase.length).trim();
-        this.desktopWakeBuffer = '';
-        callbacks.onInterim?.('');
-        callbacks.onWakePhrase?.(afterWake);
-        return;
-      }
-
       callbacks.onInterim?.('');
       callbacks.onTranscript?.(text);
-      this.isListening = false;
-      this.activeCallbacks = null;
+      if (!callbacks.continuous) {
+        this.isListening = false;
+        this.activeCallbacks = null;
+      }
       return;
     }
 
@@ -113,7 +97,7 @@ class VoiceService {
       this.lastError = 'native-error';
       this.desktopReady = false;
       this.isListening = false;
-      callbacks?.onError?.(payload.message || 'Local Whisper voice engine failed.');
+      callbacks?.onError?.(payload.message || 'Local voice engine failed.');
       return;
     }
 
@@ -136,7 +120,7 @@ class VoiceService {
   } = {}) {
     if (!this.isSupported()) {
       onError?.(isDesktop
-        ? 'Local Whisper desktop voice input is unavailable.'
+        ? 'Local desktop voice input is unavailable.'
         : 'Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return false;
     }
@@ -152,13 +136,12 @@ class VoiceService {
         if (currentSession !== this.sessionId) return false;
         this.recognition = { native: true, session: currentSession };
         this.isListening = true;
-        if (onWakePhrase) this.desktopWakeBuffer = '';
         return true;
       } catch (err) {
         this.recognition = null;
         this.isListening = false;
         this.activeCallbacks = null;
-        onError?.(err.message || 'Failed to start local Whisper voice input.');
+        onError?.(err.message || 'Failed to start local desktop voice input.');
         return false;
       }
     }
@@ -212,7 +195,7 @@ class VoiceService {
     }
   }
 
-  startHandsFreeMode({ onWake, onInterim, onError }) {
+  async startHandsFreeMode({ onWake, onInterim, onError }) {
     this.isHandsFreeActive = true;
     this.lastError = null;
     return this.startListening({
@@ -225,7 +208,6 @@ class VoiceService {
 
   stopHandsFreeMode() {
     this.isHandsFreeActive = false;
-    this.desktopWakeBuffer = '';
     this.stopListening();
   }
 
@@ -233,8 +215,6 @@ class VoiceService {
     if (!preserveHandsFree) this.isHandsFreeActive = false;
     this.sessionId += 1;
     this.isListening = false;
-    this.desktopWakeBuffer = '';
-
     const recognition = this.recognition;
     this.recognition = null;
 
