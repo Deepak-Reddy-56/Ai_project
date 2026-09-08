@@ -25,6 +25,7 @@ import {
   saveProfile,
 } from '../services/personalizationService';
 import './personalizedLearning.css';
+import './personalizedLearningFix.css';
 
 function Setup({ onComplete }) {
   const [goal, setGoal] = useState('interview');
