@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Chat from './pages/Chat';
 import CodeExplainer from './pages/CodeExplainer';
 import Topics from './pages/Topics';
+import PersonalizedLearning from './pages/PersonalizedLearning';
 import About from './pages/About';
 import VoiceAssistant from './components/assistant/VoiceAssistant';
 import './components/assistant/pointer-fix.css';
@@ -50,7 +51,7 @@ export default function App() {
     const handleHashChange = () => {
       try {
         const hash = window.location.hash.replace('#', '');
-        if (['home', 'chat', 'explainer', 'topics', 'about'].includes(hash)) setCurrentPage(hash);
+        if (['home', 'chat', 'explainer', 'topics', 'personalized', 'about'].includes(hash)) setCurrentPage(hash);
         else setCurrentPage('home');
       } catch (err) {
         console.warn('Hash parsing warning:', err);
@@ -75,6 +76,7 @@ export default function App() {
       case 'chat': return <Chat />;
       case 'explainer': return <CodeExplainer />;
       case 'topics': return <Topics selectedTopicId={selectedTopicId} setSelectedTopicId={setSelectedTopicId} />;
+      case 'personalized': return <PersonalizedLearning />;
       case 'about': return <About />;
       default: return <Home setCurrentPage={handlePageChange} setSelectedTopicId={setSelectedTopicId} />;
     }
