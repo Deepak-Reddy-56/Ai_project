@@ -1,12 +1,35 @@
-/* Scoped compatibility layer: keep the personalized page light while index.css remains the app-wide dark theme. */
+/* Dark-theme compatibility layer for Personalized Learning.
+   Keeps the existing layout/spacing intact while matching the rest of Code Companion. */
+
+.personalized-shell,
+.personalized-page {
+  color: #f0f6fc !important;
+  background: #0f1117 !important;
+}
+
+/* Main panels */
+.personalized-shell .setup-panel,
+.personalized-shell .assessment-panel,
+.personalized-page .plan-card,
+.personalized-page .section-card,
+.personalized-page .assessment-banner,
+.personalized-page .profile-strip {
+  background: #161b22 !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Typography */
 .personalized-shell .setup-panel h1,
 .personalized-shell .assessment-panel h1,
 .personalized-page .personalized-header h1,
 .personalized-page h2,
 .personalized-page h3,
 .personalized-page h4,
-.personalized-page strong {
-  color: #17191c !important;
+.personalized-page strong,
+.personalized-page .field-card > span,
+.personalized-page .roadmap-copy strong {
+  color: #f0f6fc !important;
 }
 
 .personalized-shell .setup-lead,
@@ -22,31 +45,177 @@
 .personalized-page .empty-state,
 .personalized-page .reason-list span,
 .personalized-page .plan-card p,
-.personalized-page .assessment-banner p {
-  color: #68707a !important;
+.personalized-page .assessment-banner p,
+.personalized-shell .assessment-count,
+.personalized-shell .assessment-footer > span {
+  color: #8b949e !important;
 }
 
-.personalized-shell,
-.personalized-page {
-  color: #17191c;
+/* Setup fields / selects */
+.personalized-shell .field-card {
+  background: #1c2330 !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
 }
 
-.personalized-shell button,
-.personalized-page button,
-.personalized-shell select {
-  color: #17191c;
+.personalized-shell .field-card select {
+  background: #0d1117 !important;
+  color: #f0f6fc !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color-scheme: dark;
+}
+
+.personalized-shell .field-card select option {
+  background: #161b22;
+  color: #f0f6fc;
+}
+
+.personalized-shell .field-card select:focus {
+  border-color: rgba(37, 99, 235, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+/* Buttons */
+.personalized-shell .secondary-action,
+.personalized-page .secondary-action {
+  color: #f0f6fc !important;
+  background: #161b22 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.personalized-shell .secondary-action:hover,
+.personalized-page .secondary-action:hover {
+  background: #1c2330 !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
 .personalized-shell .primary-action,
-.personalized-shell .assessment-option.selected,
 .personalized-page .primary-action {
-  color: #fff !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.personalized-shell .primary-action:hover:not(:disabled),
+.personalized-page .primary-action:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}
+
+/* Assessment */
+.personalized-shell .assessment-progress {
+  background: #1c2330 !important;
+}
+
+.personalized-shell .assessment-progress span {
+  background: #2563eb !important;
+}
+
+.personalized-shell .assessment-option {
+  background: #1c2330 !important;
+  color: #f0f6fc !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.personalized-shell .assessment-option:hover {
+  background: #232b38 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.personalized-shell .assessment-option.selected {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: rgba(37, 99, 235, 0.5) !important;
+  color: #f0f6fc !important;
+}
+
+.personalized-shell .option-radio {
+  background: #0d1117 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 .personalized-shell .assessment-option.selected .option-radio {
-  color: #fff !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.personalized-shell .assessment-hint {
+  background: #1c2330 !important;
+  border-left-color: #6e7681 !important;
+  color: #8b949e !important;
+}
+
+.personalized-shell .assessment-footer {
+  border-top-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Profile strip */
+.personalized-page .profile-icon {
+  background: #1c2330 !important;
+}
+
+.personalized-page .profile-stat {
+  border-left-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Today's plan cards */
+.personalized-page .plan-card.review-card {
+  background: #211f18 !important;
+  border-color: rgba(217, 119, 6, 0.22) !important;
+}
+
+/* Roadmap rows */
+.personalized-page .roadmap-row {
+  background: #1c2330 !important;
+  color: #f0f6fc !important;
+}
+
+.personalized-page .roadmap-row:hover {
+  background: #232b38 !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+.personalized-page .roadmap-row.completed {
+  background: rgba(22, 163, 74, 0.08) !important;
+}
+
+.personalized-page .roadmap-number {
+  background: #252c36 !important;
+  color: #8b949e !important;
+}
+
+.personalized-page .roadmap-row.completed .roadmap-number {
+  background: rgba(22, 163, 74, 0.14) !important;
+  color: #4ade80 !important;
+}
+
+/* Reason list / separators */
+.personalized-page .reason-list > div,
+.personalized-page .review-list button,
+.personalized-page .assessment-banner {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+.personalized-page .review-list button {
+  color: #f0f6fc !important;
 }
 
 .personalized-page .review-list button > span:last-child {
-  color: #9a6817 !important;
+  color: #f59e0b !important;
+}
+
+/* Session blocks */
+.personalized-page .session-steps > div {
+  background: #1c2330 !important;
+}
+
+.personalized-page .session-steps span {
+  color: #6e7681 !important;
+}
+
+/* Links/interactive focus */
+.personalized-page button:focus-visible,
+.personalized-shell button:focus-visible,
+.personalized-shell select:focus-visible {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 2px;
 }
