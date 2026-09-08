@@ -188,7 +188,8 @@ export default function VoiceAssistant() {
       }
     });
     if (!started && stateRef.current === 'listening') setState('idle');
-  }, [handleSendMessage, restartHandsFree]);
+    if (started && isDesktop) window.desktopAssistant?.activateVoice?.();
+  }, [handleSendMessage, restartHandsFree, isDesktop]);
 
   const handleToggleHandsFree = useCallback(() => {
     const nextVal = !isHandsFree;
