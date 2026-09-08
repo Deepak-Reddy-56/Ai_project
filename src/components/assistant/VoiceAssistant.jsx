@@ -75,6 +75,10 @@ export default function VoiceAssistant() {
         setInterimTranscript('Listening…');
         setState('listening');
       },
+      onTranscript: (text) => {
+        setInterimTranscript('');
+        if (text?.trim()) handleSendMessage(text.trim());
+      },
       onInterim: (interim) => {
         if (interim) setInterimTranscript(interim);
       },
