@@ -119,7 +119,7 @@ function showAssistant() {
 }
 
 function registerShortcuts() {
-  const candidates = ['Control+Alt+Shift+A', 'Control+Shift+Space', 'Alt+Shift+A'];
+  const candidates = ['Alt+Space', 'Control+Alt+Shift+A', 'Control+Shift+Space'];
   for (const accelerator of candidates) {
     try {
       if (globalShortcut.register(accelerator, showAssistant)) {
