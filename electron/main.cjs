@@ -118,6 +118,21 @@ function showAssistant() {
   assistantWindow.webContents.send('desktop-assistant:activate');
 }
 
+function requestVoiceCommand() {
+  if (!speechProcess || speechProcess.killed || !speechProcess.stdin?.writable) {
+    console.warn('[DesktopAssistant] Cannot activate voice command: voice worker is not ready.');
+    return false;
+  }
+  try {
+    speechProcess.stdin.write('{"type":"activate-command"}\n');
+    console.log('[DesktopAssistant] Voice command activation requested.');
+    return true;
+  } catch (err) {
+    console.warn('[DesktopAssistant] Failed to activate voice command:', err.message);
+    return false;
+  }
+}
+
 function registerShortcuts() {
   const candidates = ['Alt+Space', 'Control+Alt+Shift+A', 'Control+Shift+Space'];
   for (const accelerator of candidates) {
@@ -184,7 +199,7 @@ function startNativeSpeech() {
   speechProcess = spawn(python.command, [...python.args, '-u', speechScript], {
     cwd: path.join(__dirname, 'speech'),
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       PYTHONUNBUFFERED: '1',
@@ -262,6 +277,7 @@ app.whenReady().then(() => {
   ipcMain.on('desktop-assistant:show', showAssistant);
   ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
   ipcMain.handle('desktop-assistant:start-voice', () => ({ started: startNativeSpeech(), ready: speechReady }));
+  ipcMain.on('desktop-assistant:activate-voice', requestVoiceCommand);
   ipcMain.on('desktop-assistant:stop-voice', () => {});
   ipcMain.on('desktop-assistant:voice-subscribe', pushLatestSpeechState);
 
