@@ -64,7 +64,9 @@ WAKE_TRIGGER_FRAMES = max(1, int(os.getenv('ASSISTANT_WAKE_TRIGGER_FRAMES', '2')
 WAKE_COOLDOWN_SECONDS = float(os.getenv('ASSISTANT_WAKE_COOLDOWN_SECONDS', '2.0'))
 PREROLL_SECONDS = float(os.getenv('ASSISTANT_VOICE_PREROLL_SECONDS', '1.2'))
 MAX_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MAX_COMMAND_SECONDS', '45'))
-END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '3.0'))
+# A command is finalized after exactly this much detected silence.
+# The 45s limit remains only as a safety timeout for a continuously noisy/stuck input.
+END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '2.0'))
 MIN_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MIN_COMMAND_SECONDS', '0.6'))
 MIN_SPEECH_RMS = float(os.getenv('ASSISTANT_VOICE_MIN_SPEECH_RMS', '0.008'))
 SCORE_LOG_SECONDS = float(os.getenv('ASSISTANT_VOICE_SCORE_LOG_SECONDS', '1.5'))
