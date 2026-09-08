@@ -136,7 +136,7 @@ function registerShortcuts() {
 }
 
 function sendSpeechEvent(payload) {
-  if (['status', 'device', 'ready', 'listening', 'error', 'end'].includes(payload?.type)) {
+  if (['status', 'device', 'ready', 'listening', 'wake', 'error', 'end'].includes(payload?.type)) {
     latestSpeechState = payload;
     console.log('[DesktopAssistant][STT]', JSON.stringify(payload));
   } else if (payload?.type === 'recognized') {
@@ -163,7 +163,6 @@ function resolveSpeechReady(success, error) {
 
 function waitForSpeechReady(timeoutMs = 60000) {
   if (speechReady) return Promise.resolve(true);
-  startNativeSpeech();
 
   return new Promise((resolve, reject) => {
     const waiter = {
@@ -173,9 +172,17 @@ function waitForSpeechReady(timeoutMs = 60000) {
     };
     waiter.timer = setTimeout(() => {
       speechReadyWaiters = speechReadyWaiters.filter((item) => item !== waiter);
-      reject(new Error('Local Whisper did not become ready within 60 seconds.'));
+      reject(new Error('Local voice engine did not become ready within 60 seconds.'));
     }, timeoutMs);
     speechReadyWaiters.push(waiter);
+    startNativeSpeech();
+
+    // Protect against an unusually fast worker startup between registration
+    // and the first event callback.
+    if (speechReady) {
+      speechReadyWaiters = speechReadyWaiters.filter((item) => item !== waiter);
+      waiter.resolve(true);
+    }
   });
 }
 
@@ -189,14 +196,14 @@ function stopNativeSpeech() {
 
 function startNativeSpeech() {
   if (process.platform !== 'win32') {
-    const error = new Error('The local Whisper desktop voice engine currently supports Windows.');
+    const error = new Error('The local voice engine currently supports Windows.');
     resolveSpeechReady(false, error);
     sendSpeechEvent({ type: 'error', message: error.message });
     return false;
   }
 
   if (!fs.existsSync(speechScript)) {
-    const error = new Error('Python Whisper speech helper is missing from the Electron build.');
+    const error = new Error('Python voice helper is missing from the Electron build.');
     resolveSpeechReady(false, error);
     sendSpeechEvent({ type: 'error', message: error.message });
     return false;
@@ -209,7 +216,7 @@ function startNativeSpeech() {
   speechStarting = true;
   latestSpeechState = { type: 'status', state: 'starting-python' };
   sendSpeechEvent(latestSpeechState);
-  console.log(`[DesktopAssistant] Starting Whisper worker: ${python.command} ${python.args.join(' ')} -u ${speechScript}`);
+  console.log(`[DesktopAssistant] Starting voice worker: ${python.command} ${python.args.join(' ')} -u ${speechScript}`);
 
   speechProcess = spawn(python.command, [...python.args, '-u', speechScript], {
     cwd: path.join(__dirname, 'speech'),
@@ -243,35 +250,35 @@ function startNativeSpeech() {
         }
         sendSpeechEvent(payload);
       } catch {
-        console.warn('[DesktopAssistant] Ignoring invalid Whisper output:', trimmed);
+        console.warn('[DesktopAssistant] Ignoring invalid voice worker output:', trimmed);
       }
     }
   });
 
   speechProcess.stderr.on('data', (chunk) => {
     const text = chunk.toString('utf8').trim();
-    if (text) console.warn('[DesktopAssistant] Whisper stderr:', text);
+    if (text) console.warn('[DesktopAssistant] Voice worker stderr:', text);
   });
 
   speechProcess.on('spawn', () => {
-    console.log(`[DesktopAssistant] Whisper worker spawned (pid ${speechProcess.pid}).`);
+    console.log(`[DesktopAssistant] Voice worker spawned (pid ${speechProcess.pid}).`);
   });
 
   speechProcess.on('error', (err) => {
     speechStarting = false;
     speechReady = false;
     speechProcess = null;
-    const error = new Error(`Python Whisper could not start: ${err.message}`);
+    const error = new Error(`Python voice worker could not start: ${err.message}`);
     resolveSpeechReady(false, error);
     sendSpeechEvent({ type: 'error', message: error.message });
   });
 
   speechProcess.on('exit', (code, signal) => {
-    console.log(`[DesktopAssistant] Whisper worker exited: code=${code} signal=${signal || 'none'}`);
+    console.log(`[DesktopAssistant] Voice worker exited: code=${code} signal=${signal || 'none'}`);
     speechStarting = false;
     speechReady = false;
     speechProcess = null;
-    if (code !== 0) resolveSpeechReady(false, new Error(`Whisper worker exited with code ${code}.`));
+    if (code !== 0) resolveSpeechReady(false, new Error(`Voice worker exited with code ${code}.`));
     sendSpeechEvent({ type: 'end', code, signal });
   });
 
