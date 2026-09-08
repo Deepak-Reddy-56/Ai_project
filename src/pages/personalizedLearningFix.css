@@ -1,0 +1,52 @@
+/* Scoped compatibility layer: keep the personalized page light while index.css remains the app-wide dark theme. */
+.personalized-shell .setup-panel h1,
+.personalized-shell .assessment-panel h1,
+.personalized-page .personalized-header h1,
+.personalized-page h2,
+.personalized-page h3,
+.personalized-page h4,
+.personalized-page strong {
+  color: #17191c !important;
+}
+
+.personalized-shell .setup-lead,
+.personalized-shell .assessment-question,
+.personalized-page p,
+.personalized-page small,
+.personalized-page .eyebrow,
+.personalized-page .profile-main span,
+.personalized-page .profile-stat span,
+.personalized-page .roadmap-copy small,
+.personalized-page .roadmap-status,
+.personalized-page .session-note,
+.personalized-page .empty-state,
+.personalized-page .reason-list span,
+.personalized-page .plan-card p,
+.personalized-page .assessment-banner p {
+  color: #68707a !important;
+}
+
+.personalized-shell,
+.personalized-page {
+  color: #17191c;
+}
+
+.personalized-shell button,
+.personalized-page button,
+.personalized-shell select {
+  color: #17191c;
+}
+
+.personalized-shell .primary-action,
+.personalized-shell .assessment-option.selected,
+.personalized-page .primary-action {
+  color: #fff !important;
+}
+
+.personalized-shell .assessment-option.selected .option-radio {
+  color: #fff !important;
+}
+
+.personalized-page .review-list button > span:last-child {
+  color: #9a6817 !important;
+}
