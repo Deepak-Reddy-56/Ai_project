@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import threading
 from collections import deque
 
 # Windows-managed certificate stores are often more complete than Python's
@@ -64,8 +65,6 @@ WAKE_TRIGGER_FRAMES = max(1, int(os.getenv('ASSISTANT_WAKE_TRIGGER_FRAMES', '2')
 WAKE_COOLDOWN_SECONDS = float(os.getenv('ASSISTANT_WAKE_COOLDOWN_SECONDS', '2.0'))
 PREROLL_SECONDS = float(os.getenv('ASSISTANT_VOICE_PREROLL_SECONDS', '1.2'))
 MAX_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MAX_COMMAND_SECONDS', '45'))
-# A command is finalized after exactly this much detected silence.
-# The 45s limit remains only as a safety timeout for a continuously noisy/stuck input.
 END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '2.0'))
 MIN_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MIN_COMMAND_SECONDS', '0.6'))
 MIN_SPEECH_RMS = float(os.getenv('ASSISTANT_VOICE_MIN_SPEECH_RMS', '0.008'))
@@ -74,6 +73,10 @@ WAKE_FALLBACK_SECONDS = float(os.getenv('ASSISTANT_WAKE_FALLBACK_SECONDS', '2.4'
 WAKE_FALLBACK_MIN_RMS = float(os.getenv('ASSISTANT_WAKE_FALLBACK_MIN_RMS', '0.018'))
 WAKE_FALLBACK_COOLDOWN_SECONDS = float(os.getenv('ASSISTANT_WAKE_FALLBACK_COOLDOWN_SECONDS', '2.0'))
 WAKE_FALLBACK_TERMS = ('jarvis', 'assistant')
+HOTKEY_SILENCE_TIMEOUT_SECONDS = float(os.getenv('ASSISTANT_HOTKEY_SILENCE_TIMEOUT_SECONDS', '8'))
+
+force_command_requested = False
+force_command_lock = threading.Lock()
 
 
 def emit(payload):
@@ -84,6 +87,27 @@ def emit(payload):
 def log(message):
     sys.stderr.write(f'[VoiceEngine] {message}\n')
     sys.stderr.flush()
+
+
+def read_control_messages():
+    global force_command_requested
+    for line in sys.stdin:
+        try:
+            payload = json.loads(line.strip())
+        except Exception:
+            continue
+        if payload.get('type') == 'activate-command':
+            with force_command_lock:
+                force_command_requested = True
+            log('Hotkey command activation received from Electron.')
+
+
+def take_force_command_request():
+    global force_command_requested
+    with force_command_lock:
+        requested = force_command_requested
+        force_command_requested = False
+        return requested
 
 
 def resample_audio(samples, source_rate):
@@ -181,16 +205,21 @@ def main():
     last_fallback_at = 0.0
     last_score_log = 0.0
     in_command = False
+    hotkey_active = False
+
+    control_thread = threading.Thread(target=read_control_messages, daemon=True, name='voice-control')
+    control_thread.start()
 
     emit({
         'type': 'ready',
-        'engine': 'openwakeword+faster-whisper-hybrid',
+        'engine': 'openwakeword+faster-whisper-hybrid-hotkey',
         'wake_model': WAKE_MODEL,
         'model': MODEL_NAME,
         'command_max_seconds': MAX_COMMAND_SECONDS,
         'command_end_silence_seconds': END_SILENCE_SECONDS,
         'wake_threshold': WAKE_THRESHOLD,
         'wake_fallback': True,
+        'hotkey_activation': True,
     })
 
     try:
@@ -224,6 +253,22 @@ def main():
                     preroll.append(frame.copy())
                     wake_fallback_buffer.append(frame.copy())
 
+                    # Alt+Space explicitly bypasses wake-word detection. Start a
+                    # fresh command capture immediately when Electron requests it.
+                    if take_force_command_request():
+                        in_command = True
+                        hotkey_active = True
+                        command_started_at = now
+                        last_voice_at = now if frame_rms >= MIN_SPEECH_RMS else None
+                        command_audio = []
+                        preroll.clear()
+                        wake_fallback_buffer.clear()
+                        wake_hits = 0
+                        emit({'type': 'wake', 'model': 'hotkey', 'score': 1.0, 'detector': 'hotkey'})
+                        emit({'type': 'listening', 'mode': 'command', 'activation': 'hotkey'})
+                        log('Hotkey activation: listening for command.')
+                        continue
+
                     prediction = wake.predict((frame * 32767).astype(np.int16))
                     score = float(prediction.get(WAKE_MODEL, max((float(v) for v in prediction.values()), default=0.0)))
                     emit({'type': 'wake-score', 'score': round(score, 3)})
@@ -240,9 +285,6 @@ def main():
                     detected = wake_hits >= WAKE_TRIGGER_FRAMES and now - last_wake_at >= WAKE_COOLDOWN_SECONDS
                     fallback_detected = False
 
-                    # openWakeWord is the primary low-latency detector. Whisper is
-                    # only used as a safety net when there is sustained speech energy,
-                    # so ordinary silence/background noise does not trigger an expensive decode.
                     fallback_audio_samples = len(wake_fallback_buffer) * FRAME_SAMPLES
                     fallback_ready = fallback_audio_samples >= int(WAKE_FALLBACK_SECONDS * TARGET_SAMPLE_RATE)
                     if (
@@ -265,6 +307,7 @@ def main():
                         wake_hits = 0
                         last_wake_at = now
                         in_command = True
+                        hotkey_active = False
                         command_started_at = now
                         last_voice_at = now if frame_rms >= MIN_SPEECH_RMS else None
                         command_audio = list(preroll)
@@ -286,7 +329,8 @@ def main():
                 elapsed = now - (command_started_at or now)
                 silence_elapsed = now - last_voice_at if last_voice_at is not None else 0.0
                 enough_audio = elapsed >= MIN_COMMAND_SECONDS
-                should_finish = elapsed >= MAX_COMMAND_SECONDS or (
+                hotkey_no_speech_timeout = hotkey_active and last_voice_at is None and elapsed >= HOTKEY_SILENCE_TIMEOUT_SECONDS
+                should_finish = elapsed >= MAX_COMMAND_SECONDS or hotkey_no_speech_timeout or (
                     enough_audio and last_voice_at is not None and silence_elapsed >= END_SILENCE_SECONDS
                 )
                 if not should_finish:
@@ -297,6 +341,7 @@ def main():
                 in_command = False
                 command_started_at = None
                 last_voice_at = None
+                hotkey_active = False
                 emit({'type': 'status', 'state': 'processing-command'})
                 log(f'Processing command: {audio.size / TARGET_SAMPLE_RATE:.1f}s audio')
 
