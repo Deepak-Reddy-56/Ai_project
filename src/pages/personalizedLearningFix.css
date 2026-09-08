@@ -148,6 +148,139 @@
   border-top-color: rgba(255, 255, 255, 0.07) !important;
 }
 
+/* Assessment result screen */
+.personalized-shell .assessment-results {
+  width: min(980px, 100%);
+}
+
+.results-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 10px 0 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.results-score strong {
+  display: block;
+  color: #f0f6fc;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.results-score span {
+  display: block;
+  margin-top: 7px;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.results-badge {
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.results-badge.strong {
+  color: #4ade80;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.results-badge.developing {
+  color: #fbbf24;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.results-badge.needs-work {
+  color: #fb7185;
+  background: rgba(225, 29, 72, 0.1);
+}
+
+.assessment-results-lead {
+  max-width: 760px;
+  margin: 12px 0 24px;
+  color: #8b949e;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.assessment-breakdown {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.assessment-result-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  background: #1c2330;
+}
+
+.assessment-result-row > svg {
+  color: #8b949e;
+}
+
+.assessment-result-row.correct > svg {
+  color: #4ade80;
+}
+
+.assessment-result-row.incorrect > svg {
+  color: #fb7185;
+}
+
+.result-index {
+  color: #6e7681;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.assessment-result-row strong,
+.assessment-result-row small {
+  display: block;
+}
+
+.assessment-result-row strong {
+  font-size: 12px;
+}
+
+.assessment-result-row small {
+  margin-top: 3px;
+  color: #8b949e;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.assessment-focus-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 18px;
+  padding: 13px 15px;
+  border-left: 3px solid #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.assessment-focus-box strong {
+  color: #f0f6fc;
+  font-size: 12px;
+}
+
+.assessment-focus-box span {
+  color: #8b949e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Profile strip */
 .personalized-page .profile-icon {
   background: #1c2330 !important;
@@ -155,6 +288,90 @@
 
 .personalized-page .profile-stat {
   border-left-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Multi-language portfolio */
+.personalized-page .language-portfolio {
+  overflow: hidden;
+}
+
+.language-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.language-portfolio-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: #1c2330;
+  color: #f0f6fc;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.language-portfolio-card:hover {
+  transform: translateY(-1px);
+  background: #232b38;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.language-portfolio-card.active {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.language-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.language-card-top strong {
+  font-size: 13px;
+}
+
+.language-card-top span {
+  color: #60a5fa;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.language-portfolio-card > small {
+  display: block;
+  margin-top: 4px;
+  color: #6e7681 !important;
+  font-size: 10px;
+}
+
+.language-card-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  color: #8b949e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.language-card-progress {
+  height: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #0d1117;
+}
+
+.language-card-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
 }
 
 /* Today's plan cards */
@@ -218,4 +435,21 @@
 .personalized-shell select:focus-visible {
   outline: 2px solid #2563eb !important;
   outline-offset: 2px;
+}
+
+@media (max-width: 1050px) {
+  .language-portfolio-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .language-portfolio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-score-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
