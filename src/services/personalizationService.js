@@ -42,14 +42,15 @@ export function getGoalOptions() {
 }
 
 export function getLevelOptions() {
-  return LEVELS.map((id) => ({
-    id,
-    label: id.charAt(0).toUpperCase() + id.slice(1),
-  }));
+  return LEVELS.map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) }));
 }
 
 export function getDailyMinuteOptions() {
   return DAILY_MINUTES;
+}
+
+export function getLanguageOptions() {
+  return LANGUAGES.map(({ id, label }) => ({ id, label }));
 }
 
 export function loadProfile() {
@@ -65,12 +66,15 @@ export function loadProfile() {
 }
 
 export function saveProfile(profile) {
+  const requestedLanguage = profile?.language || DEFAULT_PROFILE.language;
+  const requestedLevel = profile?.level || DEFAULT_PROFILE.level;
+  const requestedMinutes = Number(profile?.dailyMinutes);
   const normalized = {
     ...DEFAULT_PROFILE,
     ...profile,
-    language: LEARNING_DATA[profile?.language] ? profile.language : DEFAULT_PROFILE.language,
-    level: LEVELS.includes(profile?.level) ? profile.level : DEFAULT_PROFILE.level,
-    dailyMinutes: DAILY_MINUTES.includes(Number(profile?.dailyMinutes)) ? Number(profile.dailyMinutes) : DEFAULT_PROFILE.dailyMinutes,
+    language: LEARNING_DATA[requestedLanguage] ? requestedLanguage : DEFAULT_PROFILE.language,
+    level: LEVELS.includes(requestedLevel) ? requestedLevel : DEFAULT_PROFILE.level,
+    dailyMinutes: DAILY_MINUTES.includes(requestedMinutes) ? requestedMinutes : DEFAULT_PROFILE.dailyMinutes,
     updatedAt: new Date().toISOString(),
   };
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
@@ -145,18 +149,10 @@ function moduleBasePriority(module, index, completedSet, assessmentScores, activ
   if (mastery >= 85) score -= 35;
   if (index === 0 && !completed) score += 10;
 
-  if (profile.goal === 'interview') {
-    if (/loop|function|data structure|object|error|condition|operator/i.test(module.title)) score += 8;
-  }
-  if (profile.goal === 'projects') {
-    if (/function|data structure|object|error|input|output/i.test(module.title)) score += 8;
-  }
-  if (profile.goal === 'fundamentals') {
-    if (index < 6) score += 8;
-  }
-  if (profile.goal === 'career') {
-    if (/function|data structure|object|error|debug/i.test(module.title)) score += 8;
-  }
+  if (profile.goal === 'interview' && /loop|function|data structure|object|error|condition|operator/i.test(module.title)) score += 8;
+  if (profile.goal === 'projects' && /function|data structure|object|error|input|output/i.test(module.title)) score += 8;
+  if (profile.goal === 'fundamentals' && index < 6) score += 8;
+  if (profile.goal === 'career' && /function|data structure|object|error|debug/i.test(module.title)) score += 8;
 
   return score;
 }
@@ -189,15 +185,11 @@ export function buildPersonalizedPlan(profile, progressOverrides = {}) {
 
   const completedCount = modules.filter((module) => completedSet.has(module.id)).length;
   const averageMastery = modules.length
-    ? Math.round(
-        modules.reduce((sum, module) => sum + Number(assessmentScores[module.id] ?? (completedSet.has(module.id) ? 70 : 0)), 0) / modules.length,
-      )
+    ? Math.round(modules.reduce((sum, module) => sum + Number(assessmentScores[module.id] ?? (completedSet.has(module.id) ? 70 : 0)), 0) / modules.length)
     : 0;
 
   let currentStreak = 0;
-  const activityDates = new Set(
-    activity.sessions.map((session) => String(session.at || '').slice(0, 10)).filter(Boolean),
-  );
+  const activityDates = new Set(activity.sessions.map((session) => String(session.at || '').slice(0, 10)).filter(Boolean));
   const cursor = new Date();
   while (activityDates.has(cursor.toISOString().slice(0, 10))) {
     currentStreak += 1;
@@ -232,10 +224,7 @@ export function createAssessmentQuestions(languageId, count = 6) {
       moduleId: module.id,
       question: `Which topic best matches this description? ${module.description}`,
       answer: module.title.replace(/^Module \d+ — /, ''),
-      options: [
-        module.title.replace(/^Module \d+ — /, ''),
-        ...distractors,
-      ].sort((a, b) => a.localeCompare(b)),
+      options: [module.title.replace(/^Module \d+ — /, ''), ...distractors].sort((a, b) => a.localeCompare(b)),
       explanation: module.summary,
       index,
     };
@@ -247,22 +236,16 @@ export function createAssessmentQuestions(languageId, count = 6) {
 export function applyAssessmentResult(profile, results) {
   const updatedScores = { ...(profile.assessmentScores || {}) };
   for (const result of results) {
-    updatedScores[result.moduleId] = result.correct ? Math.min(100, Math.max(60, Number(updatedScores[result.moduleId] || 0) + 25)) : Math.max(20, Number(updatedScores[result.moduleId] || 50) - 20);
+    updatedScores[result.moduleId] = result.correct
+      ? Math.min(100, Math.max(60, Number(updatedScores[result.moduleId] || 0) + 25))
+      : Math.max(20, Number(updatedScores[result.moduleId] || 50) - 20);
   }
-  return saveProfile({
-    ...profile,
-    assessmentComplete: true,
-    assessmentScores: updatedScores,
-  });
+  return saveProfile({ ...profile, assessmentComplete: true, assessmentScores: updatedScores });
 }
 
 export function getPersonalizationSummary(profile, plan) {
   const language = getLanguageConfig(profile.language);
-  if (!plan.nextModule) {
-    return `You have completed the ${language.label} roadmap. Keep your skills sharp with review and challenge sessions.`;
-  }
-  if (plan.needsReview.length) {
-    return `Your next step is ${plan.nextModule.title.replace(/^Module \d+ — /, '')}. I also found ${plan.needsReview.length} completed topic${plan.needsReview.length === 1 ? '' : 's'} that could use a quick review.`;
-  }
+  if (!plan.nextModule) return `You have completed the ${language.label} roadmap. Keep your skills sharp with review and challenge sessions.`;
+  if (plan.needsReview.length) return `Your next step is ${plan.nextModule.title.replace(/^Module \d+ — /, '')}. I also found ${plan.needsReview.length} completed topic${plan.needsReview.length === 1 ? '' : 's'} that could use a quick review.`;
   return `Your path is focused on ${GOALS[profile.goal]?.label.toLowerCase() || 'your goal'}. Start with ${plan.nextModule.title.replace(/^Module \d+ — /, '')}, then continue through the recommended sequence.`;
 }
