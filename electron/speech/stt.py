@@ -5,6 +5,30 @@ import sys
 import time
 from collections import deque
 
+# Windows-managed certificate stores are often more complete than Python's
+# bundled CA file (for example when traffic is inspected by a local proxy).
+# Inject the OS trust store before importing requests through openWakeWord.
+def ensure_truststore():
+    try:
+        import truststore
+    except ModuleNotFoundError:
+        package = 'truststore>=0.10,<1'
+        sys.stderr.write(f'[VoiceEngine] Missing {package}; installing automatically...\n')
+        sys.stderr.flush()
+        subprocess.check_call([
+            sys.executable,
+            '-m',
+            'pip',
+            'install',
+            '--disable-pip-version-check',
+            package,
+        ])
+        import truststore
+    truststore.inject_into_ssl()
+
+
+ensure_truststore()
+
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
@@ -46,9 +70,9 @@ WAKE_MODEL = os.getenv('ASSISTANT_WAKE_MODEL', 'hey_jarvis')
 WAKE_THRESHOLD = float(os.getenv('ASSISTANT_WAKE_THRESHOLD', '0.55'))
 WAKE_TRIGGER_FRAMES = max(1, int(os.getenv('ASSISTANT_WAKE_TRIGGER_FRAMES', '2')))
 PREROLL_SECONDS = float(os.getenv('ASSISTANT_VOICE_PREROLL_SECONDS', '1.0'))
-MAX_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MAX_COMMAND_SECONDS', '30'))
-END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '2.5'))
-MIN_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MIN_COMMAND_SECONDS', '0.4'))
+MAX_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MAX_COMMAND_SECONDS', '45'))
+END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '3.0'))
+MIN_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MIN_COMMAND_SECONDS', '0.5'))
 MIN_SPEECH_RMS = float(os.getenv('ASSISTANT_VOICE_MIN_SPEECH_RMS', '0.010'))
 
 
@@ -76,7 +100,10 @@ def ensure_wake_models():
     try:
         wake_utils.download_models(model_names=[WAKE_MODEL])
     except Exception as exc:
-        raise RuntimeError(f'Could not prepare wake-word model "{WAKE_MODEL}": {exc}') from exc
+        raise RuntimeError(
+            f'Could not prepare wake-word model "{WAKE_MODEL}". '
+            'The model download failed; verify network access and Windows certificate trust.'
+        ) from exc
 
 
 def transcribe_command(model, audio):
