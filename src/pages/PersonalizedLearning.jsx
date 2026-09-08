@@ -159,6 +159,39 @@ export default function PersonalizedLearning() {
     }
   };
 
+  const openModule = (module) => {
+    if (!module?.id) return;
+
+    const languageLabel = getLanguageConfig(profile.language).label;
+    const moduleTitle = module.title.replace(/^Module \d+ — /, '').trim();
+
+    window.location.hash = 'topics';
+
+    let attempts = 0;
+    const findAndOpen = () => {
+      attempts += 1;
+      const languageChip = Array.from(document.querySelectorAll('.lang-chip')).find(
+        (button) => button.querySelector('.lang-chip-name')?.textContent?.trim() === languageLabel,
+      );
+      const selectedLanguage = languageChip?.classList.contains('selected');
+      if (languageChip && !selectedLanguage) languageChip.click();
+
+      const moduleButton = Array.from(document.querySelectorAll('.sidebar-module-item')).find(
+        (button) => button.querySelector('.module-item-title')?.textContent?.trim() === moduleTitle,
+      );
+
+      if (moduleButton) {
+        moduleButton.click();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (attempts < 30) window.setTimeout(findAndOpen, 50);
+    };
+
+    window.setTimeout(findAndOpen, 50);
+  };
+
   const handleAssessment = (results) => {
     const next = applyAssessmentResult(profile, results);
     setProfile(next);
@@ -192,8 +225,8 @@ export default function PersonalizedLearning() {
       </section>
 
       <section className="today-grid">
-        <PlanCard eyebrow="NEXT UP" title="Continue your path" module={plan?.nextModule} actionLabel="Mark lesson done" onAction={() => markComplete(plan?.nextModule?.id)} />
-        {plan?.needsReview?.[0] && <PlanCard eyebrow="REVIEW" title="Strengthen a weak spot" module={plan.needsReview[0]} actionLabel="Complete review" tone="review-card" onAction={() => markComplete(plan.needsReview[0].id)} />}
+        <PlanCard eyebrow="NEXT UP" title="Continue your path" module={plan?.nextModule} actionLabel="Study lesson" onAction={() => openModule(plan?.nextModule)} />
+        {plan?.needsReview?.[0] && <PlanCard eyebrow="REVIEW" title="Strengthen a weak spot" module={plan.needsReview[0]} actionLabel="Open review" tone="review-card" onAction={() => openModule(plan.needsReview[0])} />}
       </section>
 
       <section className="dashboard-grid">
@@ -202,7 +235,7 @@ export default function PersonalizedLearning() {
           <div className="roadmap-list">
             {plan?.recommendations?.map((module, index) => {
               const isComplete = completedMap.includes(module.id);
-              return <button key={module.id} className={`roadmap-row ${isComplete ? 'completed' : ''}`} onClick={() => markComplete(module.id)}><span className="roadmap-number">{isComplete ? <Check size={14} /> : String(index + 1).padStart(2, '0')}</span><span className="roadmap-copy"><strong>{module.title.replace(/^Module \d+ — /, '')}</strong><small>{module.description}</small></span><span className="roadmap-status">{isComplete ? 'Done' : 'Mark done'}</span></button>;
+              return <button key={module.id} className={`roadmap-row ${isComplete ? 'completed' : ''}`} onClick={() => openModule(module)} aria-label={`Open ${module.title}`}><span className="roadmap-number">{isComplete ? <Check size={14} /> : String(index + 1).padStart(2, '0')}</span><span className="roadmap-copy"><strong>{module.title.replace(/^Module \d+ — /, '')}</strong><small>{module.description}</small></span><span className="roadmap-status">Open module <ArrowRight size={13} /></span></button>;
             })}
           </div>
         </div>
@@ -218,7 +251,7 @@ export default function PersonalizedLearning() {
 
         <div className="section-card review-section">
           <div className="section-card-header"><div><span className="eyebrow">SPACED REVIEW</span><h2>Needs attention</h2></div><RotateCcw size={18} /></div>
-          {plan?.needsReview?.length ? <div className="review-list">{plan.needsReview.map((module) => <button key={module.id} onClick={() => markComplete(module.id)}><span>{module.title.replace(/^Module \d+ — /, '')}</span><span>{module.mastery}% mastery <ChevronRight size={14} /></span></button>)}</div> : <div className="empty-state">No review topics yet. Complete the assessment and more lessons to build a stronger mastery profile.</div>}
+          {plan?.needsReview?.length ? <div className="review-list">{plan.needsReview.map((module) => <button key={module.id} onClick={() => openModule(module)}><span>{module.title.replace(/^Module \d+ — /, '')}</span><span>{module.mastery}% mastery <ChevronRight size={14} /></span></button>)}</div> : <div className="empty-state">No review topics yet. Complete the assessment and more lessons to build a stronger mastery profile.</div>}
         </div>
 
         <div className="section-card session-card">
