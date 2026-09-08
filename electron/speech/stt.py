@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import time
 from collections import deque
@@ -7,8 +8,31 @@ from collections import deque
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
-from openwakeword.model import Model as WakeWordModel
-import openwakeword.utils as wake_utils
+
+try:
+    from openwakeword.model import Model as WakeWordModel
+    import openwakeword.utils as wake_utils
+except ModuleNotFoundError:
+    package = 'openwakeword==0.6.0'
+    sys.stderr.write(f'[VoiceEngine] Missing {package}; installing automatically...\n')
+    sys.stderr.flush()
+    try:
+        subprocess.check_call([
+            sys.executable,
+            '-m',
+            'pip',
+            'install',
+            '--disable-pip-version-check',
+            package,
+        ])
+        from openwakeword.model import Model as WakeWordModel
+        import openwakeword.utils as wake_utils
+        sys.stderr.write('[VoiceEngine] openWakeWord installed successfully.\n')
+        sys.stderr.flush()
+    except Exception as exc:
+        sys.stderr.write(f'[VoiceEngine] Could not install openWakeWord automatically: {exc}\n')
+        sys.stderr.flush()
+        raise
 
 TARGET_SAMPLE_RATE = 16_000
 CHANNELS = 1
@@ -23,7 +47,7 @@ WAKE_THRESHOLD = float(os.getenv('ASSISTANT_WAKE_THRESHOLD', '0.55'))
 WAKE_TRIGGER_FRAMES = max(1, int(os.getenv('ASSISTANT_WAKE_TRIGGER_FRAMES', '2')))
 PREROLL_SECONDS = float(os.getenv('ASSISTANT_VOICE_PREROLL_SECONDS', '1.0'))
 MAX_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MAX_COMMAND_SECONDS', '30'))
-END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '2.0'))
+END_SILENCE_SECONDS = float(os.getenv('ASSISTANT_VOICE_END_SILENCE_SECONDS', '2.5'))
 MIN_COMMAND_SECONDS = float(os.getenv('ASSISTANT_VOICE_MIN_COMMAND_SECONDS', '0.4'))
 MIN_SPEECH_RMS = float(os.getenv('ASSISTANT_VOICE_MIN_SPEECH_RMS', '0.010'))
 
@@ -63,7 +87,7 @@ def transcribe_command(model, audio):
         temperature=0.0,
         vad_filter=True,
         vad_parameters={
-            'min_silence_duration_ms': 500,
+            'min_silence_duration_ms': 600,
             'min_speech_duration_ms': 180,
         },
         condition_on_previous_text=False,
@@ -165,11 +189,7 @@ def main():
                         last_voice_at = command_started_at if frame_rms >= MIN_SPEECH_RMS else None
                         command_audio = list(preroll)
                         preroll.clear()
-                        emit({
-                            'type': 'wake',
-                            'model': WAKE_MODEL,
-                            'score': round(score, 3),
-                        })
+                        emit({'type': 'wake', 'model': WAKE_MODEL, 'score': round(score, 3)})
                         emit({'type': 'listening', 'mode': 'command'})
                     continue
 
@@ -181,7 +201,9 @@ def main():
                 elapsed = now - (command_started_at or now)
                 silence_elapsed = now - last_voice_at if last_voice_at is not None else 0.0
                 enough_audio = elapsed >= MIN_COMMAND_SECONDS
-                should_finish = elapsed >= MAX_COMMAND_SECONDS or (enough_audio and last_voice_at is not None and silence_elapsed >= END_SILENCE_SECONDS)
+                should_finish = elapsed >= MAX_COMMAND_SECONDS or (
+                    enough_audio and last_voice_at is not None and silence_elapsed >= END_SILENCE_SECONDS
+                )
 
                 if not should_finish:
                     continue
