@@ -13,6 +13,16 @@ function normalize(text) {
     .trim();
 }
 
+function findWakePhrase(text, phrases) {
+  const normalized = normalize(text);
+  for (const phrase of phrases) {
+    const target = normalize(phrase);
+    if (target && normalized.includes(target)) return target;
+  }
+  if (/^assistant\b/.test(normalized)) return 'assistant';
+  return null;
+}
+
 class VoiceService {
   constructor() {
     this.recognition = null;
@@ -23,6 +33,8 @@ class VoiceService {
     this.lastError = null;
     this.sessionId = 0;
     this.desktopReady = !isDesktop;
+    this.desktopWakeBuffer = '';
+    this.desktopCommandActive = false;
 
     if (isDesktop && window.desktopAssistant?.onVoiceEvent) {
       window.desktopAssistant.onVoiceEvent((payload) => this.handleNativeVoiceEvent(payload));
@@ -66,16 +78,20 @@ class VoiceService {
 
     if (payload.type === 'wake') {
       if (!callbacks?.onWakePhrase) return;
+      this.desktopCommandActive = true;
       this.isListening = true;
       callbacks.onInterim?.('Listening…');
-      callbacks.onWakePhrase?.('');
+      callbacks.onWakePhrase('');
       return;
     }
 
     if (payload.type === 'listening') {
       this.desktopReady = true;
       this.isListening = true;
-      if (payload.mode === 'wake') callbacks?.onInterim?.('');
+      if (payload.mode === 'wake') {
+        this.desktopCommandActive = false;
+        callbacks?.onInterim?.('');
+      }
       return;
     }
 
@@ -84,12 +100,36 @@ class VoiceService {
     if (payload.type === 'recognized') {
       const text = String(payload.text || '').trim();
       if (!text || !callbacks) return;
+
+      // Native speech emits an explicit wake event before the command result.
+      // Once that happens, the next recognized transcript is the command and
+      // must not be interpreted as another wake phrase.
+      if (isDesktop && this.desktopCommandActive) {
+        this.desktopCommandActive = false;
+        callbacks.onInterim?.('');
+        callbacks.onTranscript?.(text);
+        return;
+      }
+
+      if (callbacks.onWakePhrase) {
+        // Compatibility fallback for native engines that only emit transcripts.
+        this.desktopWakeBuffer = `${this.desktopWakeBuffer} ${text}`.trim().slice(-320);
+        const phrase = findWakePhrase(this.desktopWakeBuffer, this.wakePhrases);
+        if (!phrase) return;
+        const bufferNormalized = normalize(this.desktopWakeBuffer);
+        const phraseIndex = bufferNormalized.indexOf(phrase);
+        const afterWake = bufferNormalized.slice(phraseIndex + phrase.length).trim();
+        this.desktopWakeBuffer = '';
+        this.desktopCommandActive = true;
+        callbacks.onInterim?.('');
+        callbacks.onWakePhrase(afterWake);
+        return;
+      }
+
       callbacks.onInterim?.('');
       callbacks.onTranscript?.(text);
-      if (!callbacks.continuous) {
-        this.isListening = false;
-        this.activeCallbacks = null;
-      }
+      this.isListening = false;
+      this.activeCallbacks = null;
       return;
     }
 
@@ -97,6 +137,7 @@ class VoiceService {
       this.lastError = 'native-error';
       this.desktopReady = false;
       this.isListening = false;
+      this.desktopCommandActive = false;
       callbacks?.onError?.(payload.message || 'Local voice engine failed.');
       return;
     }
@@ -104,6 +145,7 @@ class VoiceService {
     if (payload.type === 'end') {
       this.desktopReady = false;
       this.isListening = false;
+      this.desktopCommandActive = false;
       callbacks?.onEnd?.();
     }
   }
@@ -136,6 +178,10 @@ class VoiceService {
         if (currentSession !== this.sessionId) return false;
         this.recognition = { native: true, session: currentSession };
         this.isListening = true;
+        if (onWakePhrase) {
+          this.desktopWakeBuffer = '';
+          this.desktopCommandActive = false;
+        }
         return true;
       } catch (err) {
         this.recognition = null;
@@ -195,12 +241,13 @@ class VoiceService {
     }
   }
 
-  async startHandsFreeMode({ onWake, onInterim, onError }) {
+  async startHandsFreeMode({ onWake, onTranscript, onInterim, onError }) {
     this.isHandsFreeActive = true;
     this.lastError = null;
     return this.startListening({
       continuous: true,
       onWakePhrase: onWake,
+      onTranscript,
       onInterim,
       onError,
     });
@@ -208,6 +255,8 @@ class VoiceService {
 
   stopHandsFreeMode() {
     this.isHandsFreeActive = false;
+    this.desktopWakeBuffer = '';
+    this.desktopCommandActive = false;
     this.stopListening();
   }
 
@@ -215,6 +264,9 @@ class VoiceService {
     if (!preserveHandsFree) this.isHandsFreeActive = false;
     this.sessionId += 1;
     this.isListening = false;
+    this.desktopWakeBuffer = '';
+    this.desktopCommandActive = false;
+
     const recognition = this.recognition;
     this.recognition = null;
 
