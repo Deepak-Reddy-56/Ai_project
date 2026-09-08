@@ -19,8 +19,17 @@ function findWakePhrase(text, phrases) {
     const target = normalize(phrase);
     if (target && normalized.includes(target)) return target;
   }
-  if (/^assistant\b/.test(normalized)) return 'assistant';
+  if (/^(assistant|jarvis)\b/.test(normalized)) return normalized.split(' ')[0];
   return null;
+}
+
+function removeWakePhrase(text, phrases) {
+  const normalized = normalize(text);
+  if (!normalized) return '';
+  const phrase = findWakePhrase(normalized, phrases);
+  if (!phrase) return normalized;
+  const index = normalized.indexOf(phrase);
+  return normalized.slice(index + phrase.length).trim();
 }
 
 class VoiceService {
@@ -90,24 +99,30 @@ class VoiceService {
       this.isListening = true;
       if (payload.mode === 'wake') {
         this.desktopCommandActive = false;
+        this.desktopWakeBuffer = '';
         callbacks?.onInterim?.('');
+      } else if (payload.mode === 'command') {
+        this.desktopCommandActive = true;
+        callbacks?.onInterim?.('Listening…');
       }
       return;
     }
 
-    if (payload.type === 'audio-level' || payload.type === 'audio-status') return;
+    if (payload.type === 'audio-level' || payload.type === 'wake-score' || payload.type === 'audio-status') return;
 
     if (payload.type === 'recognized') {
       const text = String(payload.text || '').trim();
       if (!text || !callbacks) return;
+      callbacks.onInterim?.('');
 
-      // Native speech emits an explicit wake event before the command result.
-      // Once that happens, the next recognized transcript is the command and
-      // must not be interpreted as another wake phrase.
+      // A native wake event is authoritative. The next recognized transcript is
+      // the user's command, not another wake phrase.
       if (isDesktop && this.desktopCommandActive) {
         this.desktopCommandActive = false;
-        callbacks.onInterim?.('');
-        callbacks.onTranscript?.(text);
+        const command = removeWakePhrase(text, this.wakePhrases);
+        callbacks.onTranscript?.(command || text);
+        // VoiceAssistant's hands-free callback is also a valid command sink.
+        if (!callbacks.onTranscript && callbacks.onWakePhrase) callbacks.onWakePhrase(command || text);
         return;
       }
 
@@ -126,7 +141,6 @@ class VoiceService {
         return;
       }
 
-      callbacks.onInterim?.('');
       callbacks.onTranscript?.(text);
       this.isListening = false;
       this.activeCallbacks = null;
