@@ -22,7 +22,6 @@ let registeredAccelerator = null;
 let speechProcess = null;
 let speechReady = false;
 let speechStarting = false;
-let speechReadyWaiters = [];
 let latestSpeechState = null;
 
 const isDev = !app.isPackaged;
@@ -152,40 +151,6 @@ function pushLatestSpeechState() {
   assistantWindow.webContents.send('desktop-assistant:speech-event', latestSpeechState);
 }
 
-function resolveSpeechReady(success, error) {
-  const waiters = speechReadyWaiters;
-  speechReadyWaiters = [];
-  for (const waiter of waiters) {
-    if (success) waiter.resolve(true);
-    else waiter.reject(error instanceof Error ? error : new Error(String(error || 'Whisper worker failed')));
-  }
-}
-
-function waitForSpeechReady(timeoutMs = 60000) {
-  if (speechReady) return Promise.resolve(true);
-
-  return new Promise((resolve, reject) => {
-    const waiter = {
-      resolve: (value) => { clearTimeout(waiter.timer); resolve(value); },
-      reject: (error) => { clearTimeout(waiter.timer); reject(error); },
-      timer: null
-    };
-    waiter.timer = setTimeout(() => {
-      speechReadyWaiters = speechReadyWaiters.filter((item) => item !== waiter);
-      reject(new Error('Local voice engine did not become ready within 60 seconds.'));
-    }, timeoutMs);
-    speechReadyWaiters.push(waiter);
-    startNativeSpeech();
-
-    // Protect against an unusually fast worker startup between registration
-    // and the first event callback.
-    if (speechReady) {
-      speechReadyWaiters = speechReadyWaiters.filter((item) => item !== waiter);
-      waiter.resolve(true);
-    }
-  });
-}
-
 function stopNativeSpeech() {
   if (!speechProcess) return;
   try { speechProcess.kill(); } catch { /* ignore */ }
@@ -197,14 +162,12 @@ function stopNativeSpeech() {
 function startNativeSpeech() {
   if (process.platform !== 'win32') {
     const error = new Error('The local voice engine currently supports Windows.');
-    resolveSpeechReady(false, error);
     sendSpeechEvent({ type: 'error', message: error.message });
     return false;
   }
 
   if (!fs.existsSync(speechScript)) {
     const error = new Error('Python voice helper is missing from the Electron build.');
-    resolveSpeechReady(false, error);
     sendSpeechEvent({ type: 'error', message: error.message });
     return false;
   }
@@ -246,7 +209,6 @@ function startNativeSpeech() {
         if (payload.type === 'ready') {
           speechReady = true;
           speechStarting = false;
-          resolveSpeechReady(true);
         }
         sendSpeechEvent(payload);
       } catch {
@@ -268,9 +230,7 @@ function startNativeSpeech() {
     speechStarting = false;
     speechReady = false;
     speechProcess = null;
-    const error = new Error(`Python voice worker could not start: ${err.message}`);
-    resolveSpeechReady(false, error);
-    sendSpeechEvent({ type: 'error', message: error.message });
+    sendSpeechEvent({ type: 'error', message: `Python voice worker could not start: ${err.message}` });
   });
 
   speechProcess.on('exit', (code, signal) => {
@@ -278,7 +238,6 @@ function startNativeSpeech() {
     speechStarting = false;
     speechReady = false;
     speechProcess = null;
-    if (code !== 0) resolveSpeechReady(false, new Error(`Voice worker exited with code ${code}.`));
     sendSpeechEvent({ type: 'end', code, signal });
   });
 
@@ -302,7 +261,7 @@ app.whenReady().then(() => {
   ipcMain.handle('desktop-assistant:capture-screen', captureDesktop);
   ipcMain.on('desktop-assistant:show', showAssistant);
   ipcMain.on('desktop-assistant:hide', () => assistantWindow?.hide());
-  ipcMain.handle('desktop-assistant:start-voice', waitForSpeechReady);
+  ipcMain.handle('desktop-assistant:start-voice', () => ({ started: startNativeSpeech(), ready: speechReady }));
   ipcMain.on('desktop-assistant:stop-voice', () => {});
   ipcMain.on('desktop-assistant:voice-subscribe', pushLatestSpeechState);
 
