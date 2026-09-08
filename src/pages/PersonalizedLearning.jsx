@@ -3,12 +3,14 @@ import {
   ArrowRight,
   BookOpen,
   Check,
+  CheckCircle2,
   ChevronRight,
   Clock3,
   Flame,
   RotateCcw,
   Target,
   Trophy,
+  XCircle,
 } from 'lucide-react';
 import {
   applyAssessmentResult,
@@ -20,6 +22,7 @@ import {
   getLanguageOptions,
   getLevelOptions,
   getPersonalizationSummary,
+  getCompletedIds,
   loadProfile,
   recordLearningSession,
   saveProfile,
@@ -78,47 +81,100 @@ function Setup({ onComplete }) {
 }
 
 function Assessment({ profile, onComplete }) {
-  const questions = useMemo(() => createAssessmentQuestions(profile.language, 6), [profile.language]);
+  const questions = useMemo(() => createAssessmentQuestions(profile.language, 10), [profile.language]);
   const [answers, setAnswers] = useState({});
   const [index, setIndex] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedResults, setSubmittedResults] = useState(null);
   const current = questions[index];
 
   if (!current) {
-    onComplete([]);
     return null;
   }
 
   const choose = (option) => setAnswers((previous) => ({ ...previous, [current.id]: option }));
   const submitCurrent = () => {
     if (!answers[current.id]) return;
+
     if (index < questions.length - 1) {
-      setSubmitted(false);
       setIndex((previous) => previous + 1);
       return;
     }
-    onComplete(questions.map((question) => ({ moduleId: question.moduleId, correct: answers[question.id] === question.answer })));
+
+    const results = questions.map((question) => ({
+      moduleId: question.moduleId,
+      questionId: question.id,
+      correct: answers[question.id] === question.answer,
+      question: question.question,
+      selected: answers[question.id],
+      answer: question.answer,
+      explanation: question.explanation,
+    }));
+    setSubmittedResults(results);
   };
-  const isLast = index === questions.length - 1;
+
+  if (submittedResults) {
+    const correctCount = submittedResults.filter((result) => result.correct).length;
+    const score = Math.round((correctCount / submittedResults.length) * 100);
+    const weakResults = submittedResults.filter((result) => !result.correct).slice(0, 4);
+
+    return (
+      <div className="personalized-shell">
+        <div className="assessment-panel assessment-results">
+          <span className="eyebrow">ASSESSMENT COMPLETE</span>
+          <div className="results-score-row">
+            <div className="results-score"><strong>{score}%</strong><span>{correctCount} of {submittedResults.length} correct</span></div>
+            <div className={`results-badge ${score >= 80 ? 'strong' : score >= 60 ? 'developing' : 'needs-work'}`}>
+              {score >= 80 ? 'Strong foundation' : score >= 60 ? 'Developing' : 'Needs reinforcement'}
+            </div>
+          </div>
+          <h1>Here’s what the assessment found.</h1>
+          <p className="assessment-results-lead">Your answers are now mapped to individual learning modules. Topics you missed will receive higher review priority in your adaptive roadmap.</p>
+
+          <div className="assessment-breakdown">
+            {submittedResults.map((result, resultIndex) => (
+              <div key={result.questionId} className={`assessment-result-row ${result.correct ? 'correct' : 'incorrect'}`}>
+                <span className="result-index">{String(resultIndex + 1).padStart(2, '0')}</span>
+                <div>
+                  <strong>{result.correct ? 'Correct' : 'Review needed'}</strong>
+                  <small>{result.question}</small>
+                </div>
+                {result.correct ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+              </div>
+            ))}
+          </div>
+
+          {weakResults.length > 0 && (
+            <div className="assessment-focus-box">
+              <strong>Priority review</strong>
+              <span>{weakResults.map((result) => result.moduleId.split('-').slice(0, -1).join('-')).filter(Boolean).length > 0 ? 'Your weaker concepts will be surfaced earlier in the roadmap.' : 'We will use your missed questions to prioritize review.'}</span>
+            </div>
+          )}
+
+          <button className="primary-action" onClick={() => onComplete(submittedResults)}>Build my adaptive path <ArrowRight size={16} /></button>
+        </div>
+      </div>
+    );
+  }
+
   const selected = answers[current.id];
+  const isLast = index === questions.length - 1;
 
   return (
     <div className="personalized-shell">
       <div className="assessment-panel">
-        <div className="assessment-topline"><span className="eyebrow">BASELINE ASSESSMENT</span><span className="assessment-count">{index + 1} / {questions.length}</span></div>
+        <div className="assessment-topline"><span className="eyebrow">SKILL ASSESSMENT</span><span className="assessment-count">{index + 1} / {questions.length}</span></div>
         <div className="assessment-progress"><span style={{ width: `${((index + 1) / questions.length) * 100}%` }} /></div>
-        <h1>Let’s find where you should start.</h1>
+        <h1>Let’s measure what you already know.</h1>
         <p className="assessment-question">{current.question}</p>
         <div className="assessment-options">
           {current.options.map((option) => (
-            <button key={option} className={`assessment-option ${selected === option ? 'selected' : ''}`} onClick={() => { choose(option); setSubmitted(true); }}>
+            <button key={option} className={`assessment-option ${selected === option ? 'selected' : ''}`} onClick={() => choose(option)}>
               <span className="option-radio">{selected === option ? <Check size={14} /> : null}</span><span>{option}</span>
             </button>
           ))}
         </div>
-        {submitted && selected && <div className="assessment-hint">Your answers set review priority. A mistake lowers confidence in that concept; it does not block your progress.</div>}
         <div className="assessment-footer">
-          <span>{getLanguageConfig(profile.language).label} assessment</span>
+          <span>{getLanguageConfig(profile.language).label} · knowledge check</span>
           <button className="primary-action compact" disabled={!selected} onClick={submitCurrent}>{isLast ? 'Finish assessment' : 'Next question'} <ChevronRight size={15} /></button>
         </div>
       </div>
@@ -136,6 +192,37 @@ function PlanCard({ title, eyebrow, module, actionLabel, onAction, tone = '' }) 
   );
 }
 
+function LanguagePortfolio({ profile, onSelect }) {
+  return (
+    <section className="section-card language-portfolio">
+      <div className="section-card-header"><div><span className="eyebrow">YOUR LANGUAGES</span><h2>Learning across languages</h2></div><BookOpen size={18} /></div>
+      <div className="language-portfolio-grid">
+        {getLanguageOptions().map((option) => {
+          const language = getLanguageConfig(option.id);
+          const completed = getCompletedIds(option.id);
+          const moduleCount = Array.isArray(completed) ? completed.length : 0;
+          const total = buildPersonalizedPlan({ ...profile, language: option.id }).totalModules;
+          const progress = total ? Math.round((moduleCount / total) * 100) : 0;
+          const isActive = profile.language === option.id;
+          const masteryValues = Object.entries(profile.assessmentScores || {})
+            .filter(([moduleId]) => moduleId.startsWith(`${option.id}-`))
+            .map(([, value]) => Number(value));
+          const mastery = masteryValues.length ? Math.round(masteryValues.reduce((sum, value) => sum + value, 0) / masteryValues.length) : 0;
+
+          return (
+            <button key={option.id} className={`language-portfolio-card ${isActive ? 'active' : ''}`} onClick={() => onSelect(option.id)}>
+              <div className="language-card-top"><strong>{language.label}</strong><span>{isActive ? 'Active' : 'Switch'}</span></div>
+              <small>{language.tag}</small>
+              <div className="language-card-metrics"><span>{progress}% roadmap</span><span>{mastery}% mastery</span></div>
+              <div className="language-card-progress"><span style={{ width: `${progress}%`, background: language.color }} /></div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function PersonalizedLearning() {
   const [profile, setProfile] = useState(() => loadProfile());
   const [assessmentMode, setAssessmentMode] = useState(false);
@@ -144,27 +231,10 @@ export default function PersonalizedLearning() {
   useEffect(() => setPlan(buildPersonalizedPlan(profile)), [profile]);
 
   const progressStorage = 'code_companion_learning_progress_v1';
-  const markComplete = (moduleId) => {
-    if (!moduleId) return;
-    try {
-      const raw = localStorage.getItem(progressStorage);
-      const parsed = raw ? JSON.parse(raw) : {};
-      const ids = Array.isArray(parsed?.[profile.language]) ? parsed[profile.language] : [];
-      if (!ids.includes(moduleId)) parsed[profile.language] = [...ids, moduleId];
-      localStorage.setItem(progressStorage, JSON.stringify(parsed));
-      recordLearningSession(Math.min(profile.dailyMinutes, 15));
-      setPlan(buildPersonalizedPlan(profile, { completedIds: parsed[profile.language] }));
-    } catch {
-      // Keep the dashboard usable when local storage is unavailable.
-    }
-  };
-
   const openModule = (module) => {
     if (!module?.id) return;
-
     const languageLabel = getLanguageConfig(profile.language).label;
     const moduleTitle = module.title.replace(/^Module \d+ — /, '').trim();
-
     window.location.hash = 'topics';
 
     let attempts = 0;
@@ -173,23 +243,30 @@ export default function PersonalizedLearning() {
       const languageChip = Array.from(document.querySelectorAll('.lang-chip')).find(
         (button) => button.querySelector('.lang-chip-name')?.textContent?.trim() === languageLabel,
       );
-      const selectedLanguage = languageChip?.classList.contains('selected');
-      if (languageChip && !selectedLanguage) languageChip.click();
+      if (languageChip && !languageChip.classList.contains('selected')) languageChip.click();
 
       const moduleButton = Array.from(document.querySelectorAll('.sidebar-module-item')).find(
         (button) => button.querySelector('.module-item-title')?.textContent?.trim() === moduleTitle,
       );
-
       if (moduleButton) {
         moduleButton.click();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
-
       if (attempts < 30) window.setTimeout(findAndOpen, 50);
     };
-
     window.setTimeout(findAndOpen, 50);
+  };
+
+  const switchLanguage = (languageId) => {
+    if (languageId === profile.language) return;
+    const next = saveProfile({
+      ...profile,
+      language: languageId,
+      assessmentComplete: false,
+    });
+    setAssessmentMode(false);
+    setProfile(next);
   };
 
   const handleAssessment = (results) => {
@@ -224,6 +301,8 @@ export default function PersonalizedLearning() {
         <div className="profile-stat"><span>Streak</span><strong><Flame size={14} /> {plan?.currentStreak || 0}d</strong></div>
       </section>
 
+      <LanguagePortfolio profile={profile} onSelect={switchLanguage} />
+
       <section className="today-grid">
         <PlanCard eyebrow="NEXT UP" title="Continue your path" module={plan?.nextModule} actionLabel="Study lesson" onAction={() => openModule(plan?.nextModule)} />
         {plan?.needsReview?.[0] && <PlanCard eyebrow="REVIEW" title="Strengthen a weak spot" module={plan.needsReview[0]} actionLabel="Open review" tone="review-card" onAction={() => openModule(plan.needsReview[0])} />}
@@ -251,7 +330,7 @@ export default function PersonalizedLearning() {
 
         <div className="section-card review-section">
           <div className="section-card-header"><div><span className="eyebrow">SPACED REVIEW</span><h2>Needs attention</h2></div><RotateCcw size={18} /></div>
-          {plan?.needsReview?.length ? <div className="review-list">{plan.needsReview.map((module) => <button key={module.id} onClick={() => openModule(module)}><span>{module.title.replace(/^Module \d+ — /, '')}</span><span>{module.mastery}% mastery <ChevronRight size={14} /></span></button>)}</div> : <div className="empty-state">No review topics yet. Complete the assessment and more lessons to build a stronger mastery profile.</div>}
+          {plan?.needsReview?.length ? <div className="review-list">{plan.needsReview.map((module) => <button key={module.id} onClick={() => openModule(module)}><span>{module.title.replace(/^Module \d+ — /, '')}</span><span>{module.mastery}% mastery <ChevronRight size={14} /></span></button>)}</div> : <div className="empty-state">No review topics yet. Complete an assessment or a few lessons to build a stronger mastery profile.</div>}
         </div>
 
         <div className="section-card session-card">
@@ -261,7 +340,7 @@ export default function PersonalizedLearning() {
         </div>
       </section>
 
-      {!profile.assessmentComplete && <section className="assessment-banner"><div><span className="eyebrow">MAKE IT MORE PRECISE</span><h2>Take the baseline assessment</h2><p>Six questions move your roadmap from a generic sequence to an adaptive starting point.</p></div><button className="primary-action" onClick={() => setAssessmentMode(true)}>Start assessment <ArrowRight size={15} /></button></section>}
+      {!profile.assessmentComplete && <section className="assessment-banner"><div><span className="eyebrow">MAKE IT MORE PRECISE</span><h2>Take the skill assessment</h2><p>10 knowledge-check questions identify what you already know and which modules need more practice.</p></div><button className="primary-action" onClick={() => setAssessmentMode(true)}>Start assessment <ArrowRight size={15} /></button></section>}
     </div>
   );
 }
